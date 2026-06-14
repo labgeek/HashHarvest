@@ -5,3 +5,6 @@ tests/
 dist/
 build/
 testpdf.pdf
+createhash.py
+testPDF/
+output/

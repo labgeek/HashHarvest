@@ -5,10 +5,16 @@ import pypdf
 import re
 
 
-class MD5Extractor:
-    """Extract MD5-shaped values from PDF files and write CSV-style output."""
+class HashExtractor:
+    """Extract MD5, SHA1, SHA256, and SHA512 hashes from PDF files and write CSV-style output."""
 
-    MD5_PATTERN = r'[a-fA-F0-9]{32}'
+    # Ordered largest-first so exact-length negative lookaround prevents overlap.
+    HASH_PATTERNS = {
+        'SHA512': r'(?<![a-fA-F0-9])[a-fA-F0-9]{128}(?![a-fA-F0-9])',
+        'SHA256': r'(?<![a-fA-F0-9])[a-fA-F0-9]{64}(?![a-fA-F0-9])',
+        'SHA1':   r'(?<![a-fA-F0-9])[a-fA-F0-9]{40}(?![a-fA-F0-9])',
+        'MD5':    r'(?<![a-fA-F0-9])[a-fA-F0-9]{32}(?![a-fA-F0-9])',
+    }
 
     def __init__(self, directory, save_path):
         """Create an extractor for a PDF directory and output file path."""
@@ -44,10 +50,10 @@ class MD5Extractor:
         Args:
             progress_callback: Optional callable receiving an integer percentage.
             status_callback: Optional callable receiving skipped-file messages.
-            result_callback: Optional callable receiving each ``pdf_path, md5`` pair.
+            result_callback: Optional callable receiving each ``pdf_path, hash_type, hash_value`` triple.
 
         Returns:
-            A dictionary mapping PDF paths to sets of unique MD5-shaped values.
+            A dictionary mapping PDF paths to sets of (hash_type, hash_value) tuples.
         """
         self.results = {}
         self.errors = []
@@ -57,15 +63,19 @@ class MD5Extractor:
         for count, pdf in enumerate(pdfs, start=1):
             try:
                 content = self.get_pdf_content(pdf)
-                self.results[pdf] = set(re.findall(self.MD5_PATTERN, content))
+                found = set()
+                for hash_type, pattern in self.HASH_PATTERNS.items():
+                    for value in re.findall(pattern, content):
+                        found.add((hash_type, value.lower()))
+                self.results[pdf] = found
             except Exception as error:
                 self.errors.append((pdf, str(error)))
                 if status_callback is not None:
                     status_callback("Skipped %s: %s" % (pdf, error))
             else:
                 if result_callback is not None:
-                    for md5 in sorted(self.results[pdf]):
-                        result_callback(pdf, md5)
+                    for hash_type, hash_value in sorted(self.results[pdf]):
+                        result_callback(pdf, hash_type, hash_value)
 
             if progress_callback is not None and total > 0:
                 progress_callback(int(count * 100 / total))
@@ -77,7 +87,7 @@ class MD5Extractor:
         """Append extracted PDF/hash pairs to the configured output file."""
         with open(self.save_path, mode='a', newline='') as f:
             writer = csv.writer(f, lineterminator='\n')
-            writer.writerow(['Absolute_Path', 'MD5_Hash_Values'])
-            for pdf, md5s in sorted(self.results.items()):
-                for md5 in sorted(md5s):
-                    writer.writerow([pdf, md5])
+            writer.writerow(['Absolute_Path', 'Hash_Type', 'Hash_Value'])
+            for pdf, hashes in sorted(self.results.items()):
+                for hash_type, hash_value in sorted(hashes):
+                    writer.writerow([pdf, hash_type, hash_value])

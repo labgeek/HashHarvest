@@ -1,10 +1,10 @@
-# MD5Extractor
+# HashExtractor
 
 Author: labgeek@gmail.com (JD Durick)
 
-`MD5Extractor` is a simple PyQt5 desktop application that scans PDF files for MD5-shaped hash values and writes the results to `md5Output.txt`.
+`HashExtractor` is a simple PyQt5 desktop application that scans PDF files for MD5, SHA1, SHA256, and SHA512 hash values and writes the results to `hashOutput.txt`.
 
-The app recursively searches a selected input folder for PDF files, extracts page text with `pypdf`, finds 32-character hexadecimal values, and writes one row per PDF/hash pair.
+The app recursively searches a selected input folder for PDF files, extracts page text with `pypdf`, finds hexadecimal hash values of the expected lengths, and writes one row per PDF/hash pair.
 
 <img width="1180" height="499" alt="image" src="https://github.com/user-attachments/assets/01e3a331-6647-4066-95ff-b11f7d476922" />
 
@@ -13,12 +13,13 @@ The app recursively searches a selected input folder for PDF files, extracts pag
 
 - Branded PyQt5 interface with the application title, version, author, and current launch date.
 - Input folder picker for the PDF directory.
-- Output folder picker for the generated `md5Output.txt` file.
+- Output folder picker for the generated `hashOutput.txt` file.
 - Threaded PDF scanning so the GUI remains responsive during extraction.
 - Progress bar that updates as PDFs are processed.
 - Results table with separate columns for:
   - PDF file path
-  - MD5 hash value
+  - Hash type (MD5, SHA1, SHA256, SHA512)
+  - Hash value
 - Scan summary showing:
   - PDFs scanned
   - hashes found
@@ -49,13 +50,13 @@ From the project directory:
 
 ```powershell
 cd C:\data\projects\md5Extractor
-python md5Extractor.py
+python hashExtractor.py
 ```
 
 The application window provides:
 
 - `Select Input Folder`: choose the folder containing PDFs to scan.
-- `Select Output Folder`: choose where `md5Output.txt` should be written.
+- `Select Output Folder`: choose where `hashOutput.txt` should be written.
 - `Start Scan`: begin scanning PDFs.
 - `Clear Form`: clear the selected paths, results table, progress bar, and scan summary.
 - `Open README`: open this README in a separate window. Click the button again to close it.
@@ -67,7 +68,7 @@ You can also type paths directly into the input fields.
 The output file is always named:
 
 ```text
-md5Output.txt
+hashOutput.txt
 ```
 
 It is written inside the selected output directory. For example, if the output directory is:
@@ -79,28 +80,30 @@ C:\data\projects\md5Extractor\out
 the final output path is:
 
 ```text
-C:\data\projects\md5Extractor\out\md5Output.txt
+C:\data\projects\md5Extractor\out\hashOutput.txt
 ```
 
 The output uses CSV-style rows:
 
 ```csv
-Absolute_Path,MD5_Hash_Values
-C:\path\to\file.pdf,44d88612fea8a8f36de82e1278abb02f
+Absolute_Path,Hash_Type,Hash_Value
+C:\path\to\file.pdf,MD5,44d88612fea8a8f36de82e1278abb02f
+C:\path\to\file.pdf,SHA256,e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ```
 
 Each row contains:
 
 - `Absolute_Path`: the full path of the PDF where the hash was found.
-- `MD5_Hash_Values`: one matched 32-character hexadecimal value.
+- `Hash_Type`: the algorithm matched (`MD5`, `SHA1`, `SHA256`, or `SHA512`).
+- `Hash_Value`: the matched hexadecimal hash string.
 
 If a PDF contains more than one unique matching hash, each hash is written on its own row. If the same hash appears multiple times in the same PDF, it is written once for that PDF.
 
 ## Important Behavior
 
-- The app matches MD5-shaped strings. It does not verify that a value is actually the MD5 hash of a file.
+- The app matches hash-shaped strings by length and character set. It does not verify that a value is actually the hash of a file.
 - PDFs that cannot be read are skipped and counted in the scan summary.
-- Existing `md5Output.txt` files are appended to because the writer opens the file in append mode.
+- Existing `hashOutput.txt` files are appended to because the writer opens the file in append mode.
 - Each scan writes a header row before writing results.
 - Scanning runs in a worker thread and controls are disabled during an active scan.
 - The GUI remains open after extraction completes.
@@ -109,7 +112,7 @@ If a PDF contains more than one unique matching hash, each hash is written on it
 ## Project Layout
 
 ```text
-md5Extractor.py      PyQt5 GUI entry point and README viewer
+hashExtractor.py     PyQt5 GUI entry point and README viewer
 extractor.py         PDF scanning, hash extraction, and output writing
 requirements.txt     Runtime dependencies
 testpdf.pdf          Sample PDF fixture
@@ -119,7 +122,7 @@ contributors.txt     Contributor information
 
 ## Implementation Notes
 
-The main extraction class is `MD5Extractor` in `extractor.py`.
+The main extraction class is `HashExtractor` in `extractor.py`.
 
 Key methods:
 
@@ -127,11 +130,11 @@ Key methods:
 - `read_dir()` recursively finds PDF files and returns them in sorted order.
 - `get_pdf_content()` extracts text from a PDF.
 - `extract()` coordinates scanning, matching, progress updates, status updates, result callbacks, and output writing.
-- `write_data()` writes results to `md5Output.txt`.
+- `write_data()` writes results to `hashOutput.txt`.
 
-The GUI in `md5Extractor.py`:
+The GUI in `hashExtractor.py`:
 
-- builds the final output path by joining the selected output directory with `md5Output.txt`
+- builds the final output path by joining the selected output directory with `hashOutput.txt`
 - displays results in a table
 - tracks scan progress and summary counts
 - runs extraction through a `QThread` worker
@@ -142,13 +145,13 @@ The GUI in `md5Extractor.py`:
 Run syntax validation after changing Python files:
 
 ```powershell
-python -m py_compile md5Extractor.py extractor.py
+python -m py_compile hashExtractor.py extractor.py
 ```
 
 Build a Windows executable with PyInstaller:
 
 ```powershell
-python -m PyInstaller --clean --onefile --windowed --name MD5Extractor --hidden-import PyQt5.sip --add-data "README.md;." md5Extractor.py
+python -m PyInstaller --clean --onefile --windowed --name HashExtractor --hidden-import PyQt5.sip --add-data "README.md;." hashExtractor.py
 ```
 
 The `--add-data "README.md;."` option bundles this README so the in-app README button works from the compiled executable.

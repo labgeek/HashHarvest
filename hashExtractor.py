@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
-from extractor import MD5Extractor
+from extractor import HashExtractor
 import os
 import sys
 
@@ -17,7 +17,7 @@ class ScanWorker(QObject):
 
     progress_updated = pyqtSignal(int)
     status_updated = pyqtSignal(str)
-    result_found = pyqtSignal(str, str)
+    result_found = pyqtSignal(str, str, str)
     scan_finished = pyqtSignal(dict, int, str)
     scan_failed = pyqtSignal(str)
 
@@ -30,7 +30,7 @@ class ScanWorker(QObject):
     def run(self):
         """Execute extraction and emit completion or failure signals."""
         try:
-            extractor = MD5Extractor(self.directory, self.save_path)
+            extractor = HashExtractor(self.directory, self.save_path)
             results = extractor.extract(
                 self.progress_updated.emit,
                 self.status_updated.emit,
@@ -114,13 +114,13 @@ class pdfAnalysis(QDialog):
         self.save_location = QLineEdit()
         self.progress = QProgressBar()
         self.status_label = QLabel("Ready")
-        self.title_label = QLabel("MD5Extractor v0.2 by labgeek")
+        self.title_label = QLabel("HashExtractor v0.3 by labgeek")
         self.date_label = QLabel(QDate.currentDate().toString("MMMM d, yyyy"))
         self.pdfs_scanned = QLabel("0")
         self.hashes_found = QLabel("0")
         self.skipped_files = QLabel("0")
         self.output_file = QLineEdit()
-        self.results_table = QTableWidget(0, 2)
+        self.results_table = QTableWidget(0, 3)
 
         self.execute = QPushButton("Start Scan")
         self.clear = QPushButton("Clear Form")
@@ -129,7 +129,7 @@ class pdfAnalysis(QDialog):
         self.browse_save = QPushButton("Select Output Folder")
 
         self.dir.setPlaceholderText("Select the directory containing PDF files")
-        self.save_location.setPlaceholderText("Select the directory for md5Output.txt")
+        self.save_location.setPlaceholderText("Select the directory for hashOutput.txt")
         self.progress.setValue(0)
         self.progress.setAlignment(Qt.AlignCenter)
         self.title_label.setAlignment(Qt.AlignCenter)
@@ -138,12 +138,13 @@ class pdfAnalysis(QDialog):
         self.output_file.setReadOnly(True)
         self.output_file.setPlaceholderText("Not generated")
 
-        self.results_table.setHorizontalHeaderLabels(["PDF File", "MD5 Hash"])
+        self.results_table.setHorizontalHeaderLabels(["PDF File", "Hash Type", "Hash Value"])
         self.results_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.results_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.results_table.setAlternatingRowColors(True)
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
 
         pdf_layout.addWidget(QLabel("Input PDF Directory"))
         pdf_layout.addWidget(self.dir)
@@ -194,7 +195,7 @@ class pdfAnalysis(QDialog):
 
         self.setLayout(main_layout)
         self.setGeometry(200, 200, 1050, 420)
-        self.setWindowTitle("MD5Extractor v0.2 by labgeek")
+        self.setWindowTitle("HashExtractor v0.3 by labgeek")
         self.setFocus()
 
         self.execute.clicked.connect(self.search)
@@ -258,12 +259,13 @@ class pdfAnalysis(QDialog):
         self.dir.setEnabled(enabled)
         self.save_location.setEnabled(enabled)
 
-    def add_result(self, pdf, md5):
+    def add_result(self, pdf, hash_type, hash_value):
         """Append one PDF/hash result row to the results table."""
         row = self.results_table.rowCount()
         self.results_table.insertRow(row)
         self.results_table.setItem(row, 0, QTableWidgetItem(pdf))
-        self.results_table.setItem(row, 1, QTableWidgetItem(md5))
+        self.results_table.setItem(row, 1, QTableWidgetItem(hash_type))
+        self.results_table.setItem(row, 2, QTableWidgetItem(hash_value))
         self.hashes_found.setText(str(row + 1))
 
     def search(self):
@@ -283,8 +285,8 @@ class pdfAnalysis(QDialog):
             self.status_label.setText("Output directory is required")
             return
 
-        save_location = os.path.join(output_directory, "md5Output.txt")
-        extractor = MD5Extractor(directory, save_location)
+        save_location = os.path.join(output_directory, "hashOutput.txt")
+        extractor = HashExtractor(directory, save_location)
 
         if extractor.dir_exists() == False:
             QMessageBox.warning(self, "Input Error", "The PDF input directory does not exist.")
