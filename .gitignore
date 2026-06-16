@@ -1,0 +1,12 @@
+.claude/
+__pycache__/
+docs/
+tests/
+dist/
+build/
+testpdf.pdf
+createhash.py
+testPDF/
+output/
+howtobuild.md
+HashExtractor.spec
