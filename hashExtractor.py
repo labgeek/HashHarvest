@@ -1,8 +1,11 @@
+import csv
+import json
+import os
+import sys
+
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from extractor import HashExtractor
-import os
-import sys
 
 
 def resource_path(filename):
@@ -13,32 +16,31 @@ def resource_path(filename):
 
 
 class ScanWorker(QObject):
-    """Run PDF extraction in a worker thread and emit GUI-safe signals."""
+    """Run hash extraction in a worker thread and emit GUI-safe signals."""
 
     progress_updated = pyqtSignal(int)
     status_updated = pyqtSignal(str)
     result_found = pyqtSignal(str, str, str, str)
-    scan_finished = pyqtSignal(dict, int, str)
+    scan_finished = pyqtSignal(dict, int)
     scan_failed = pyqtSignal(str)
 
-    def __init__(self, directory, save_path, hash_types=None):
-        """Create a worker for the selected input directory and output path."""
+    def __init__(self, directory, hash_types=None):
+        """Create a worker for the selected input directory."""
         QObject.__init__(self)
         self.directory = directory
-        self.save_path = save_path
         self.hash_types = hash_types
 
     def run(self):
         """Execute extraction and emit completion or failure signals."""
         try:
-            extractor = HashExtractor(self.directory, self.save_path)
+            extractor = HashExtractor(self.directory)
             results = extractor.extract(
                 self.progress_updated.emit,
                 self.status_updated.emit,
                 self.result_found.emit,
                 hash_types=self.hash_types,
             )
-            self.scan_finished.emit(results, len(extractor.errors), self.save_path)
+            self.scan_finished.emit(results, len(extractor.errors))
         except Exception as error:
             self.scan_failed.emit(str(error))
 
@@ -86,7 +88,7 @@ class ReadmeWindow(QDialog):
 
 
 class pdfAnalysis(QDialog):
-    """Main MD5Extractor application dialog."""
+    """Main HashExtractor application dialog."""
 
     def __init__(self):
         """Build the GUI, initialize state, and connect widget signals."""
@@ -96,13 +98,14 @@ class pdfAnalysis(QDialog):
         self.scan_thread = None
         self.scan_worker = None
         self.readme_window = None
+        self.scan_results = {}
 
         main_layout = QVBoxLayout()
         content_layout = QHBoxLayout()
         controls_layout = QVBoxLayout()
         pdf_layout = QHBoxLayout()
-        save_layout = QHBoxLayout()
         button_layout = QHBoxLayout()
+        export_layout = QHBoxLayout()
         summary_layout = QGridLayout()
         header_layout = QVBoxLayout()
 
@@ -113,7 +116,6 @@ class pdfAnalysis(QDialog):
         summary_group = QGroupBox("Scan Summary")
 
         self.dir = QLineEdit()
-        self.save_location = QLineEdit()
         self.chk_md5 = QCheckBox("MD5")
         self.chk_sha1 = QCheckBox("SHA1")
         self.chk_sha256 = QCheckBox("SHA256")
@@ -125,17 +127,16 @@ class pdfAnalysis(QDialog):
         self.pdfs_scanned = QLabel("0")
         self.hashes_found = QLabel("0")
         self.skipped_files = QLabel("0")
-        self.output_file = QLineEdit()
         self.results_table = QTableWidget(0, 4)
 
         self.execute = QPushButton("Start Scan")
         self.clear = QPushButton("Clear Form")
         self.readme_button = QPushButton("Open README")
         self.browse_pdf = QPushButton("Select Input Folder")
-        self.browse_save = QPushButton("Select Output Folder")
+        self.export_csv_btn = QPushButton("Export CSV")
+        self.export_json_btn = QPushButton("Export JSON")
 
         self.dir.setPlaceholderText("Select the directory containing files to scan")
-        self.save_location.setPlaceholderText("Select the directory for hashOutput.txt")
         for chk in (self.chk_md5, self.chk_sha1, self.chk_sha256, self.chk_sha512):
             chk.setChecked(True)
         self.progress.setValue(0)
@@ -143,8 +144,8 @@ class pdfAnalysis(QDialog):
         self.title_label.setAlignment(Qt.AlignCenter)
         self.date_label.setAlignment(Qt.AlignCenter)
         self.title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
-        self.output_file.setReadOnly(True)
-        self.output_file.setPlaceholderText("Not generated")
+        self.export_csv_btn.setEnabled(False)
+        self.export_json_btn.setEnabled(False)
 
         self.results_table.setHorizontalHeaderLabels(["Source File", "File Type", "Hash Type", "Hash Value"])
         self.results_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -159,14 +160,14 @@ class pdfAnalysis(QDialog):
         pdf_layout.addWidget(self.dir)
         pdf_layout.addWidget(self.browse_pdf)
 
-        save_layout.addWidget(QLabel("Output Directory"))
-        save_layout.addWidget(self.save_location)
-        save_layout.addWidget(self.browse_save)
-
         button_layout.addWidget(self.execute)
         button_layout.addWidget(self.clear)
         button_layout.addWidget(self.readme_button)
         button_layout.addStretch()
+
+        export_layout.addWidget(self.export_csv_btn)
+        export_layout.addWidget(self.export_json_btn)
+        export_layout.addStretch()
 
         hash_layout = QHBoxLayout()
         hash_layout.addWidget(QLabel("Hash Types"))
@@ -177,11 +178,11 @@ class pdfAnalysis(QDialog):
         hash_layout.addStretch()
 
         config_layout.addLayout(pdf_layout)
-        config_layout.addLayout(save_layout)
         config_layout.addLayout(hash_layout)
         config_layout.addWidget(QLabel("Progress"))
         config_layout.addWidget(self.progress)
         config_layout.addLayout(button_layout)
+        config_layout.addLayout(export_layout)
         config_group.setLayout(config_layout)
 
         summary_layout.addWidget(QLabel("Files Scanned"), 0, 0)
@@ -190,8 +191,6 @@ class pdfAnalysis(QDialog):
         summary_layout.addWidget(self.hashes_found, 1, 1)
         summary_layout.addWidget(QLabel("Skipped Files"), 2, 0)
         summary_layout.addWidget(self.skipped_files, 2, 1)
-        summary_layout.addWidget(QLabel("Output File"), 3, 0)
-        summary_layout.addWidget(self.output_file, 3, 1)
         summary_layout.setColumnStretch(1, 1)
         summary_group.setLayout(summary_layout)
 
@@ -212,7 +211,7 @@ class pdfAnalysis(QDialog):
         main_layout.addWidget(self.status_label)
 
         self.setLayout(main_layout)
-        self.setGeometry(200, 200, 1050, 420)
+        self.setGeometry(200, 200, 1050, 400)
         self.setWindowTitle("HashExtractor v0.3 by labgeek")
         self.setFocus()
 
@@ -220,24 +219,18 @@ class pdfAnalysis(QDialog):
         self.clear.clicked.connect(self.clear_fields)
         self.readme_button.clicked.connect(self.toggle_readme)
         self.browse_pdf.clicked.connect(self.browse_pdf_directory)
-        self.browse_save.clicked.connect(self.browse_file)
+        self.export_csv_btn.clicked.connect(self.export_csv)
+        self.export_json_btn.clicked.connect(self.export_json)
 
     def browse_pdf_directory(self):
-        """Open a folder picker and populate the input PDF directory field."""
+        """Open a folder picker and populate the input directory field."""
         directory = QFileDialog.getExistingDirectory(self, caption="Select Input Directory", directory=".")
         if directory:
             self.dir.setText(QDir.toNativeSeparators(directory))
 
-    def browse_file(self):
-        """Open a folder picker and populate the output directory field."""
-        directory = QFileDialog.getExistingDirectory(self, caption="Select Output Directory", directory=".")
-        if directory:
-            self.save_location.setText(QDir.toNativeSeparators(directory))
-
     def clear_fields(self):
         """Clear selected paths, scan results, progress, and status text."""
         self.dir.clear()
-        self.save_location.clear()
         for chk in (self.chk_md5, self.chk_sha1, self.chk_sha256, self.chk_sha512):
             chk.setChecked(True)
         self.reset_scan_output()
@@ -261,23 +254,22 @@ class pdfAnalysis(QDialog):
         self.readme_button.setText("Open README")
 
     def reset_scan_output(self):
-        """Reset result table, progress bar, summary counts, and output path."""
+        """Reset result table, progress bar, summary counts, and export buttons."""
         self.results_table.setRowCount(0)
         self.progress.setValue(0)
         self.pdfs_scanned.setText("0")
         self.hashes_found.setText("0")
         self.skipped_files.setText("0")
-        self.output_file.clear()
-        self.output_file.setToolTip("")
+        self.scan_results = {}
+        self.export_csv_btn.setEnabled(False)
+        self.export_json_btn.setEnabled(False)
 
     def set_controls_enabled(self, enabled):
         """Enable or disable scan configuration controls during processing."""
         self.execute.setEnabled(enabled)
         self.clear.setEnabled(enabled)
         self.browse_pdf.setEnabled(enabled)
-        self.browse_save.setEnabled(enabled)
         self.dir.setEnabled(enabled)
-        self.save_location.setEnabled(enabled)
         for chk in (self.chk_md5, self.chk_sha1, self.chk_sha256, self.chk_sha512):
             chk.setEnabled(enabled)
 
@@ -292,20 +284,14 @@ class pdfAnalysis(QDialog):
         self.hashes_found.setText(str(row + 1))
 
     def search(self):
-        """Validate user input and start the threaded PDF scan."""
+        """Validate user input and start the threaded hash scan."""
         directory = self.dir.text().strip()
-        output_directory = self.save_location.text().strip()
 
         self.reset_scan_output()
 
         if not directory:
             QMessageBox.warning(self, "Input Error", "Select an input directory.")
             self.status_label.setText("Input directory is required")
-            return
-
-        if not output_directory:
-            QMessageBox.warning(self, "Output Error", "Select an output directory.")
-            self.status_label.setText("Output directory is required")
             return
 
         hash_types = {
@@ -320,26 +306,17 @@ class pdfAnalysis(QDialog):
             QMessageBox.warning(self, "Selection Error", "Select at least one hash type.")
             return
 
-        save_location = os.path.join(output_directory, "hashOutput.txt")
-        extractor = HashExtractor(directory, save_location)
-
-        if extractor.dir_exists() == False:
+        extractor = HashExtractor(directory)
+        if not extractor.dir_exists():
             QMessageBox.warning(self, "Input Error", "The input directory does not exist.")
             self.status_label.setText("Input directory does not exist")
-            return
-
-        try:
-            os.makedirs(output_directory, exist_ok=True)
-        except OSError as error:
-            QMessageBox.warning(self, "Output Error", "The output directory could not be created: %s" % error)
-            self.status_label.setText("Output directory could not be created")
             return
 
         self.status_label.setText("Scanning files...")
         self.set_controls_enabled(False)
 
         self.scan_thread = QThread()
-        self.scan_worker = ScanWorker(directory, save_location, hash_types)
+        self.scan_worker = ScanWorker(directory, hash_types)
         self.scan_worker.moveToThread(self.scan_thread)
 
         self.scan_thread.started.connect(self.scan_worker.run)
@@ -356,19 +333,20 @@ class pdfAnalysis(QDialog):
 
         self.scan_thread.start()
 
-    def scan_complete(self, results, skipped_count, save_path):
-        """Update summary fields and notify the user after a successful scan."""
+    def scan_complete(self, results, skipped_count):
+        """Update summary fields and enable export after a successful scan."""
         scanned_count = len(results) + skipped_count
-        hash_count = sum(len(md5s) for md5s in results.values())
+        hash_count = sum(len(hashes) for hashes in results.values())
 
+        self.scan_results = results
         self.pdfs_scanned.setText(str(scanned_count))
         self.hashes_found.setText(str(hash_count))
         self.skipped_files.setText(str(skipped_count))
-        self.output_file.setText(save_path)
-        self.output_file.setToolTip(save_path)
         self.status_label.setText("Scan complete")
         self.set_controls_enabled(True)
-        QMessageBox.information(self, "Scan Complete", "Parsing complete. Output saved to %s" % save_path)
+        self.export_csv_btn.setEnabled(True)
+        self.export_json_btn.setEnabled(True)
+        QMessageBox.information(self, "Scan Complete", "Scan complete. Use Export CSV or Export JSON to save results.")
 
     def scan_failed(self, error):
         """Re-enable controls and report a scan failure."""
@@ -380,6 +358,44 @@ class pdfAnalysis(QDialog):
         """Clear references after the scan thread finishes."""
         self.scan_thread = None
         self.scan_worker = None
+
+    def export_csv(self):
+        """Prompt for a file path and export results as CSV."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export CSV", "hashOutput.csv", "CSV Files (*.csv)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, mode='w', newline='') as f:
+                writer = csv.writer(f, lineterminator='\n')
+                writer.writerow(['Absolute_Path', 'Hash_Type', 'Hash_Value'])
+                for file_path, hashes in sorted(self.scan_results.items()):
+                    for hash_type, hash_value in sorted(hashes):
+                        writer.writerow([file_path, hash_type, hash_value])
+            self.status_label.setText("Exported CSV: %s" % path)
+            QMessageBox.information(self, "Export Complete", "CSV saved to:\n%s" % path)
+        except Exception as error:
+            QMessageBox.critical(self, "Export Error", "Could not save CSV: %s" % error)
+
+    def export_json(self):
+        """Prompt for a file path and export results as JSON."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export JSON", "hashOutput.json", "JSON Files (*.json)"
+        )
+        if not path:
+            return
+        try:
+            rows = []
+            for file_path, hashes in sorted(self.scan_results.items()):
+                for hash_type, hash_value in sorted(hashes):
+                    rows.append({"absolute_path": file_path, "hash_type": hash_type, "hash_value": hash_value})
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(rows, f, indent=2)
+            self.status_label.setText("Exported JSON: %s" % path)
+            QMessageBox.information(self, "Export Complete", "JSON saved to:\n%s" % path)
+        except Exception as error:
+            QMessageBox.critical(self, "Export Error", "Could not save JSON: %s" % error)
 
 
 if __name__ == "__main__":

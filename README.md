@@ -2,7 +2,7 @@
 
 Author: labgeek@gmail.com (JD Durick)
 
-`HashExtractor` is a PyQt5 desktop application that scans a folder of files for cryptographic hash values and writes the results to a CSV-formatted output file. It detects MD5, SHA1, SHA256, and SHA512 hashes by matching exact hexadecimal lengths using negative lookaround so shorter patterns never match inside longer ones.
+`HashExtractor` is a PyQt5 desktop application that scans a folder of files for cryptographic hash values and lets you export the results as CSV or JSON. It detects MD5, SHA1, SHA256, and SHA512 hashes by matching exact hexadecimal lengths using negative lookaround so shorter patterns never match inside longer ones.
 
 <img width="1477" height="552" alt="image" src="https://github.com/user-attachments/assets/0c8baa4d-1057-4550-ac72-7472a5ecdd8a" />
 
@@ -40,11 +40,12 @@ Extensions are matched case-insensitively. Files with other extensions are ignor
 - Results table with four columns: **Source File**, **File Type**, **Hash Type**, and **Hash Value**.
 - Alternating row colors and resizable columns for readability.
 - Progress bar that updates per file processed.
-- Scan summary panel showing files scanned, hashes found, skipped files, and output path.
-- Read-only output path field with a tooltip for long paths.
-- Clear Form button resets all inputs, results, progress, and summary fields.
+- Scan summary panel showing files scanned, hashes found, and skipped files.
+- **Export CSV** button saves results to a CSV file of your choosing after the scan completes.
+- **Export JSON** button saves results to a JSON file of your choosing after the scan completes.
+- Export buttons are disabled until a scan finishes successfully.
+- Clear Form button resets all inputs, results, progress, summary fields, and export buttons.
 - README viewer opens this file in a separate read-only window from within the app.
-- Output directory is created automatically if it does not already exist.
 - Duplicate hashes within the same file are written once.
 - Skipped files (unreadable or malformed) are counted but do not stop the scan.
 
@@ -65,7 +66,7 @@ python -m pip install -r requirements.txt
 ## Running the App
 
 ```powershell
-cd C:\data\projects\md5Extractor
+cd C:\data\projects\HashExtractor
 python hashExtractor.py
 ```
 
@@ -75,51 +76,66 @@ python hashExtractor.py
 |---------|-------------|
 | **Input Directory** field | Type or browse to the folder containing files to scan. |
 | **Select Input Folder** | Opens a folder picker for the input directory. |
-| **Output Directory** field | Type or browse to the folder where `hashOutput.txt` will be written. |
-| **Select Output Folder** | Opens a folder picker for the output directory. |
-| **Start Scan** | Validates inputs and begins the threaded scan. |
+| **Hash Types** checkboxes | Choose which algorithms to scan for (MD5, SHA1, SHA256, SHA512). All checked by default. |
+| **Start Scan** | Validates the input directory and begins the threaded scan. |
 | **Clear Form** | Resets all fields, the results table, the progress bar, and summary counts. |
 | **Open README** | Opens this file in a read-only viewer. Click again to close it. |
+| **Export CSV** | Opens a save dialog and writes the current results to a CSV file. Enabled after a successful scan. |
+| **Export JSON** | Opens a save dialog and writes the current results to a JSON file. Enabled after a successful scan. |
 
-You can type paths directly into either directory field instead of using the folder pickers.
+You can type a path directly into the Input Directory field instead of using the folder picker.
 
 
-## Output File
+## Exporting Results
 
-Results are written to:
+No file is written automatically. After a scan completes, use the export buttons to save results in your preferred format.
 
-```text
-<selected output directory>\hashOutput.txt
-```
+### CSV
 
-The file uses CSV format with three columns:
+Columns: `Absolute_Path`, `Hash_Type`, `Hash_Value`.
 
 ```csv
 Absolute_Path,Hash_Type,Hash_Value
 C:\path\to\report.pdf,MD5,44d88612fea8a8f36de82e1278abb02f
 C:\path\to\alerts.log,SHA1,da39a3ee5e6b4b0d3255bfef95601890afd80709
 C:\path\to\iocs.json,SHA256,e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-C:\path\to\report.xml,SHA512,cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e
 ```
 
-| Column | Description |
-|--------|-------------|
-| `Absolute_Path` | Full file system path of the source file containing the hash. |
-| `Hash_Type` | Algorithm matched: `MD5`, `SHA1`, `SHA256`, or `SHA512`. |
-| `Hash_Value` | Lowercase hexadecimal hash string. |
+### JSON
 
-Each unique hash found in a file produces one row. If the same hash appears more than once in the same file, it is written once. Each scan session appends to the file and writes its own header row.
+A flat array of objects, one entry per hash found.
+
+```json
+[
+  {
+    "absolute_path": "C:\\path\\to\\report.pdf",
+    "hash_type": "MD5",
+    "hash_value": "44d88612fea8a8f36de82e1278abb02f"
+  },
+  {
+    "absolute_path": "C:\\path\\to\\alerts.log",
+    "hash_type": "SHA1",
+    "hash_value": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+  }
+]
+```
+
+| Field | Description |
+|-------|-------------|
+| `absolute_path` / `Absolute_Path` | Full file system path of the source file containing the hash. |
+| `hash_type` / `Hash_Type` | Algorithm matched: `MD5`, `SHA1`, `SHA256`, or `SHA512`. |
+| `hash_value` / `Hash_Value` | Lowercase hexadecimal hash string. |
 
 
 ## Important Behavior
 
 - Hashes are matched by hexadecimal length and character set only. The app does not verify that a matched value is the actual hash of any file.
 - A 64-character hex string is classified as SHA256, not as two MD5 values. Exact-length negative lookaround prevents shorter patterns from matching inside longer ones.
-- Hash values are normalized to lowercase before being stored and written.
+- Hash values are normalized to lowercase before being stored and exported.
 - Files that cannot be opened or read are skipped and counted in the scan summary without stopping the scan.
 - Malformed JSON and XML files are skipped with an error recorded in the scan summary.
-- `hashOutput.txt` is opened in append mode, so results from previous scans are preserved.
 - Controls are disabled while a scan is running and re-enabled on completion or failure.
+- Export buttons are only enabled after a successful scan. Clearing the form disables them again.
 - Image-only or scanned PDFs will not yield results unless OCR is applied beforehand.
 
 
@@ -127,7 +143,7 @@ Each unique hash found in a file produces one row. If the same hash appears more
 
 ```text
 hashExtractor.py        PyQt5 GUI, worker thread, and README viewer
-extractor.py            HashExtractor class — file discovery, regex matching, CSV output
+extractor.py            HashExtractor class — file discovery, regex matching, CSV/JSON export
 readers.py              File readers and read_file() dispatcher for all supported formats
 requirements.txt        Runtime dependencies (pypdf, PyQt5)
 scripts/
@@ -138,6 +154,7 @@ docs/
   FEATURE_ROADMAP.md    Longer-horizon feature ideas
 TODO.md                 Near-term implementation backlog
 howtobuild.md           PyInstaller build command reference
+CHANGELOG.md            Version history
 README.md               This file
 ```
 
@@ -149,9 +166,12 @@ README.md               This file
 ```python
 from extractor import HashExtractor
 
-extractor = HashExtractor(directory="/path/to/files", save_path="/path/to/hashOutput.txt")
+extractor = HashExtractor(directory="/path/to/files")
 results = extractor.extract()
 # results: {file_path: set of (hash_type, hash_value) tuples}
+
+extractor.export_csv("/path/to/output.csv")
+extractor.export_json("/path/to/output.json")
 ```
 
 File reading is handled by [readers.py](readers.py), which can also be used directly:
@@ -169,8 +189,9 @@ print(SUPPORTED_EXTENSIONS)               # {'.pdf', '.txt', '.log', '.md', '.cs
 |--------|-------------|
 | `dir_exists()` | Returns `True` if the configured input directory exists. |
 | `read_dir()` | Recursively finds all supported files under the input directory, sorted. |
-| `extract(...)` | Runs the full scan, fires optional callbacks, writes output, returns results. |
-| `write_data()` | Appends the current results dict to the output file in CSV format. |
+| `extract(...)` | Runs the full scan, fires optional callbacks, and returns results. |
+| `export_csv(path)` | Writes the current results to a CSV file at the given path. |
+| `export_json(path)` | Writes the current results to a JSON file at the given path. |
 
 `extract()` accepts three optional callbacks:
 

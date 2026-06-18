@@ -1,4 +1,5 @@
 import csv
+import json
 import os
 import re
 
@@ -6,7 +7,7 @@ from readers import read_file, SUPPORTED_EXTENSIONS
 
 
 class HashExtractor:
-    """Extract MD5, SHA1, SHA256, and SHA512 hashes from supported files and write CSV-style output."""
+    """Extract MD5, SHA1, SHA256, and SHA512 hashes from supported files."""
 
     # Ordered largest-first so exact-length negative lookaround prevents overlap.
     HASH_PATTERNS = {
@@ -16,10 +17,9 @@ class HashExtractor:
         'MD5':    r'(?<![a-fA-F0-9])[a-fA-F0-9]{32}(?![a-fA-F0-9])',
     }
 
-    def __init__(self, directory, save_path):
-        """Create an extractor for an input directory and output file path."""
+    def __init__(self, directory):
+        """Create an extractor for the given input directory."""
         self.directory = directory
-        self.save_path = save_path
         self.results = {}
         self.errors = []
 
@@ -37,7 +37,7 @@ class HashExtractor:
         return sorted(paths)
 
     def extract(self, progress_callback=None, status_callback=None, result_callback=None, hash_types=None):
-        """Scan supported files, emit optional callbacks, write output, and return results.
+        """Scan supported files, emit optional callbacks, and return results.
 
         Args:
             progress_callback: Optional callable receiving an integer percentage.
@@ -79,14 +79,22 @@ class HashExtractor:
             if progress_callback is not None and total > 0:
                 progress_callback(int(count * 100 / total))
 
-        self.write_data()
         return self.results
 
-    def write_data(self):
-        """Append extracted file/hash pairs to the configured output file."""
-        with open(self.save_path, mode='a', newline='') as f:
+    def export_csv(self, path):
+        """Write results to a CSV file at the given path."""
+        with open(path, mode='w', newline='') as f:
             writer = csv.writer(f, lineterminator='\n')
             writer.writerow(['Absolute_Path', 'Hash_Type', 'Hash_Value'])
-            for path, hashes in sorted(self.results.items()):
+            for file_path, hashes in sorted(self.results.items()):
                 for hash_type, hash_value in sorted(hashes):
-                    writer.writerow([path, hash_type, hash_value])
+                    writer.writerow([file_path, hash_type, hash_value])
+
+    def export_json(self, path):
+        """Write results to a JSON file at the given path."""
+        rows = []
+        for file_path, hashes in sorted(self.results.items()):
+            for hash_type, hash_value in sorted(hashes):
+                rows.append({"absolute_path": file_path, "hash_type": hash_type, "hash_value": hash_value})
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(rows, f, indent=2)
