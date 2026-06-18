@@ -127,39 +127,6 @@ A flat array of objects, one entry per hash found.
 | `hash_type` / `Hash_Type` | Algorithm matched: `MD5`, `SHA1`, `SHA256`, or `SHA512`. |
 | `hash_value` / `Hash_Value` | Lowercase hexadecimal hash string. |
 
-
-## Important Behavior
-
-- Hashes are matched by hexadecimal length and character set only. The app does not verify that a matched value is the actual hash of any file.
-- A 64-character hex string is classified as SHA256, not as two MD5 values. Exact-length negative lookaround prevents shorter patterns from matching inside longer ones.
-- Hash values are normalized to lowercase before being stored and exported.
-- Files that cannot be opened or read are skipped and counted in the scan summary without stopping the scan.
-- Malformed JSON and XML files are skipped with an error recorded in the scan summary.
-- Controls are disabled while a scan is running and re-enabled on completion or failure.
-- Export buttons are only enabled after a successful scan. Clearing the form disables them again.
-- Image-only or scanned PDFs will not yield results unless OCR is applied beforehand.
-
-
-## Project Layout
-
-```text
-hashExtractor.py        PyQt5 GUI, worker thread, and README viewer
-extractor.py            HashExtractor class — file discovery, regex matching, CSV/JSON export
-readers.py              File readers and read_file() dispatcher for all supported formats
-requirements.txt        Runtime dependencies (pypdf, PyQt5)
-scripts/
-  createhash.py         Utility script that generates a sample PDF containing test hashes
-testPDF/                Sample PDF for manual testing
-testFiles/              Sample files for each supported format (csv, json, log, md, txt, xml)
-docs/
-  FEATURE_ROADMAP.md    Longer-horizon feature ideas
-TODO.md                 Near-term implementation backlog
-howtobuild.md           PyInstaller build command reference
-CHANGELOG.md            Version history
-README.md               This file
-```
-
-
 ## Implementation Notes
 
 `HashExtractor` in [extractor.py](extractor.py) has no GUI dependency and can be used independently.
@@ -203,19 +170,6 @@ print(SUPPORTED_EXTENSIONS)               # {'.pdf', '.txt', '.log', '.md', '.cs
 | `result_callback` | `(file_path, file_type, hash_type, hash_value)` | For each hash found. |
 
 The GUI in [hashExtractor.py](hashExtractor.py) wires these callbacks to PyQt5 signals emitted by a `ScanWorker` running in a `QThread`.
-
-
-## Generating Test Fixtures
-
-`scripts/createhash.py` uses `reportlab` to generate a sample PDF containing MD5, SHA1, SHA256, and SHA512 hash values for manual testing.
-
-```powershell
-pip install reportlab
-python scripts/createhash.py
-```
-
-The script writes `hash_test_file.pdf` to the current directory.
-
 
 ## Building a Standalone Executable
 
