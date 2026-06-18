@@ -21,11 +21,12 @@ class ScanWorker(QObject):
     scan_finished = pyqtSignal(dict, int, str)
     scan_failed = pyqtSignal(str)
 
-    def __init__(self, directory, save_path):
+    def __init__(self, directory, save_path, hash_types=None):
         """Create a worker for the selected input directory and output path."""
         QObject.__init__(self)
         self.directory = directory
         self.save_path = save_path
+        self.hash_types = hash_types
 
     def run(self):
         """Execute extraction and emit completion or failure signals."""
@@ -35,6 +36,7 @@ class ScanWorker(QObject):
                 self.progress_updated.emit,
                 self.status_updated.emit,
                 self.result_found.emit,
+                hash_types=self.hash_types,
             )
             self.scan_finished.emit(results, len(extractor.errors), self.save_path)
         except Exception as error:
@@ -112,6 +114,10 @@ class pdfAnalysis(QDialog):
 
         self.dir = QLineEdit()
         self.save_location = QLineEdit()
+        self.chk_md5 = QCheckBox("MD5")
+        self.chk_sha1 = QCheckBox("SHA1")
+        self.chk_sha256 = QCheckBox("SHA256")
+        self.chk_sha512 = QCheckBox("SHA512")
         self.progress = QProgressBar()
         self.status_label = QLabel("Ready")
         self.title_label = QLabel("HashExtractor v0.3 by labgeek")
@@ -130,6 +136,8 @@ class pdfAnalysis(QDialog):
 
         self.dir.setPlaceholderText("Select the directory containing files to scan")
         self.save_location.setPlaceholderText("Select the directory for hashOutput.txt")
+        for chk in (self.chk_md5, self.chk_sha1, self.chk_sha256, self.chk_sha512):
+            chk.setChecked(True)
         self.progress.setValue(0)
         self.progress.setAlignment(Qt.AlignCenter)
         self.title_label.setAlignment(Qt.AlignCenter)
@@ -160,8 +168,17 @@ class pdfAnalysis(QDialog):
         button_layout.addWidget(self.readme_button)
         button_layout.addStretch()
 
+        hash_layout = QHBoxLayout()
+        hash_layout.addWidget(QLabel("Hash Types"))
+        hash_layout.addWidget(self.chk_md5)
+        hash_layout.addWidget(self.chk_sha1)
+        hash_layout.addWidget(self.chk_sha256)
+        hash_layout.addWidget(self.chk_sha512)
+        hash_layout.addStretch()
+
         config_layout.addLayout(pdf_layout)
         config_layout.addLayout(save_layout)
+        config_layout.addLayout(hash_layout)
         config_layout.addWidget(QLabel("Progress"))
         config_layout.addWidget(self.progress)
         config_layout.addLayout(button_layout)
@@ -221,6 +238,8 @@ class pdfAnalysis(QDialog):
         """Clear selected paths, scan results, progress, and status text."""
         self.dir.clear()
         self.save_location.clear()
+        for chk in (self.chk_md5, self.chk_sha1, self.chk_sha256, self.chk_sha512):
+            chk.setChecked(True)
         self.reset_scan_output()
         self.status_label.setText("Ready")
 
@@ -259,6 +278,8 @@ class pdfAnalysis(QDialog):
         self.browse_save.setEnabled(enabled)
         self.dir.setEnabled(enabled)
         self.save_location.setEnabled(enabled)
+        for chk in (self.chk_md5, self.chk_sha1, self.chk_sha256, self.chk_sha512):
+            chk.setEnabled(enabled)
 
     def add_result(self, source, file_type, hash_type, hash_value):
         """Append one result row to the results table."""
@@ -287,6 +308,18 @@ class pdfAnalysis(QDialog):
             self.status_label.setText("Output directory is required")
             return
 
+        hash_types = {
+            name for name, chk in [
+                ("MD5", self.chk_md5),
+                ("SHA1", self.chk_sha1),
+                ("SHA256", self.chk_sha256),
+                ("SHA512", self.chk_sha512),
+            ] if chk.isChecked()
+        }
+        if not hash_types:
+            QMessageBox.warning(self, "Selection Error", "Select at least one hash type.")
+            return
+
         save_location = os.path.join(output_directory, "hashOutput.txt")
         extractor = HashExtractor(directory, save_location)
 
@@ -306,7 +339,7 @@ class pdfAnalysis(QDialog):
         self.set_controls_enabled(False)
 
         self.scan_thread = QThread()
-        self.scan_worker = ScanWorker(directory, save_location)
+        self.scan_worker = ScanWorker(directory, save_location, hash_types)
         self.scan_worker.moveToThread(self.scan_thread)
 
         self.scan_thread.started.connect(self.scan_worker.run)

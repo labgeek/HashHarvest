@@ -36,19 +36,25 @@ class HashExtractor:
                     paths.append(os.path.join(root, filename))
         return sorted(paths)
 
-    def extract(self, progress_callback=None, status_callback=None, result_callback=None):
+    def extract(self, progress_callback=None, status_callback=None, result_callback=None, hash_types=None):
         """Scan supported files, emit optional callbacks, write output, and return results.
 
         Args:
             progress_callback: Optional callable receiving an integer percentage.
             status_callback: Optional callable receiving skipped-file messages.
             result_callback: Optional callable receiving each ``file_path, file_type, hash_type, hash_value`` tuple.
+            hash_types: Optional set of algorithm names to scan for (e.g. ``{'MD5', 'SHA256'}``).
+                        Defaults to all supported algorithms when ``None``.
 
         Returns:
             A dictionary mapping file paths to sets of (hash_type, hash_value) tuples.
         """
         self.results = {}
         self.errors = []
+        patterns = {
+            k: v for k, v in self.HASH_PATTERNS.items()
+            if hash_types is None or k in hash_types
+        }
         paths = self.read_dir()
         total = len(paths)
 
@@ -56,7 +62,7 @@ class HashExtractor:
             try:
                 content = read_file(path)
                 found = set()
-                for hash_type, pattern in self.HASH_PATTERNS.items():
+                for hash_type, pattern in patterns.items():
                     for value in re.findall(pattern, content):
                         found.add((hash_type, value.lower()))
                 self.results[path] = found

@@ -10,3 +10,5 @@ testPDF/
 output/
 howtobuild.md
 HashExtractor.spec
+testFiles/
+out/

@@ -126,16 +126,19 @@ Each unique hash found in a file produces one row. If the same hash appears more
 ## Project Layout
 
 ```text
-hashExtractor.py     PyQt5 GUI, worker thread, and README viewer
-extractor.py         HashExtractor class — file discovery, regex matching, CSV output
-readers.py           File readers and read_file() dispatcher for all supported formats
-requirements.txt     Runtime dependencies (pypdf, PyQt5)
-pytest.ini           Test configuration
-tests/               Unit tests for readers and extractor
-testPDF/             Sample PDF for manual testing
-testFiles/           Sample files for each supported format
-README.md            This file
-contributors.txt     Contributor information
+hashExtractor.py        PyQt5 GUI, worker thread, and README viewer
+extractor.py            HashExtractor class — file discovery, regex matching, CSV output
+readers.py              File readers and read_file() dispatcher for all supported formats
+requirements.txt        Runtime dependencies (pypdf, PyQt5)
+scripts/
+  createhash.py         Utility script that generates a sample PDF containing test hashes
+testPDF/                Sample PDF for manual testing
+testFiles/              Sample files for each supported format (csv, json, log, md, txt, xml)
+docs/
+  FEATURE_ROADMAP.md    Longer-horizon feature ideas
+TODO.md                 Near-term implementation backlog
+howtobuild.md           PyInstaller build command reference
+README.md               This file
 ```
 
 
@@ -180,13 +183,16 @@ print(SUPPORTED_EXTENSIONS)               # {'.pdf', '.txt', '.log', '.md', '.cs
 The GUI in [hashExtractor.py](hashExtractor.py) wires these callbacks to PyQt5 signals emitted by a `ScanWorker` running in a `QThread`.
 
 
-## Running Tests
+## Generating Test Fixtures
+
+`scripts/createhash.py` uses `reportlab` to generate a sample PDF containing MD5, SHA1, SHA256, and SHA512 hash values for manual testing.
 
 ```powershell
-python -m pytest -v
+pip install reportlab
+python scripts/createhash.py
 ```
 
-Tests live in `tests/` and cover all reader functions, the dispatcher, file discovery, hash extraction across every supported format, and error handling for malformed files.
+The script writes `hash_test_file.pdf` to the current directory.
 
 
 ## Building a Standalone Executable
