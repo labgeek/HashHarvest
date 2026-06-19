@@ -2,7 +2,7 @@
 
 Author: labgeek@gmail.com (JD Durick)
 
-`HashExtractor` is a PyQt5 desktop application that scans a folder of files for cryptographic hash values and lets you export the results as CSV or JSON. It detects MD5, SHA1, SHA256, and SHA512 hashes by matching exact hexadecimal lengths using negative lookaround so shorter patterns never match inside longer ones.
+`HashExtractor` is a PyQt5 desktop application that scans a folder of files for cryptographic hash values and lets you export the results as CSV or JSON. It detects MD5, SHA1, SHA256, and SHA512 hashes by matching exact hexadecimal lengths using negative lookaround so shorter patterns never match inside longer ones. Every scan is automatically saved to a local SQLite database so you can browse and reload past results at any time.
 
 <img width="1708" height="427" alt="image" src="https://github.com/user-attachments/assets/da370fad-035d-4576-96d4-5546f9c58823" />
 
@@ -44,7 +44,10 @@ Extensions are matched case-insensitively. Files with other extensions are ignor
 - Scan summary panel showing files scanned, hashes found, and skipped files.
 - **Export CSV** button saves results to a CSV file of your choosing after the scan completes.
 - **Export JSON** button saves results to a JSON file of your choosing after the scan completes.
-- Export buttons are disabled until a scan finishes successfully.
+- Export buttons are disabled until a scan finishes successfully; loading a historical scan re-enables them.
+- **Scan History** button opens a filterable list of past scans stored in the local database.
+- Every completed scan is automatically persisted to a local SQLite database (`hashextractor.db`).
+- Historical scan results can be loaded back into the main UI and exported like a fresh scan.
 - Clear Form button resets all inputs, results, progress, summary fields, and export buttons.
 - README viewer opens this file in a separate read-only window from within the app.
 - Duplicate hashes within the same file are written once.
@@ -81,15 +84,42 @@ python hashExtractor.py
 | **Start Scan** | Validates the input directory and begins the threaded scan. |
 | **Clear Form** | Resets all fields, the results table, the progress bar, and summary counts. |
 | **Open README** | Opens this file in a read-only viewer. Click again to close it. |
-| **Export CSV** | Opens a save dialog and writes the current results to a CSV file. Enabled after a successful scan. |
-| **Export JSON** | Opens a save dialog and writes the current results to a JSON file. Enabled after a successful scan. |
+| **Scan History** | Opens the Scan History dialog to browse and reload past scans. |
+| **Export CSV** | Opens a save dialog and writes the current results to a CSV file. Enabled after a successful scan or after loading history. |
+| **Export JSON** | Opens a save dialog and writes the current results to a JSON file. Enabled after a successful scan or after loading history. |
 
 You can type a path directly into the Input Directory field instead of using the folder picker.
 
 
+## Scan History
+
+Every time a scan completes, the results are saved automatically to `hashextractor.db` (a SQLite file written next to the executable or script). Click **Scan History** to open the history dialog.
+
+### History Dialog
+
+| Column | Description |
+|--------|-------------|
+| Date / Time | Timestamp when the scan ran (truncated to the minute). |
+| Directory | Input directory that was scanned. |
+| Files | Number of files processed. |
+| Hashes Found | Total number of hashes extracted. |
+
+Use the **Show** drop-down to filter by time range:
+
+| Option | Shows scans from |
+|--------|-----------------|
+| Today | Midnight of the current day |
+| Last 7 days | Rolling 7-day window |
+| Last 30 days | Rolling 30-day window (default) |
+| Last 90 days | Rolling 90-day window |
+| All time | Entire database |
+
+Select a row and click **Load Selected** to restore those results into the main window. The results table, summary counts, and export buttons are all populated exactly as they would be after a live scan.
+
+
 ## Exporting Results
 
-No file is written automatically. After a scan completes, use the export buttons to save results in your preferred format.
+No file is written automatically. After a scan completes (or after loading a historical scan), use the export buttons to save results in your preferred format.
 
 ### CSV
 
@@ -151,7 +181,21 @@ text = read_file("/path/to/report.json")   # returns extracted text as a string
 print(SUPPORTED_EXTENSIONS)               # {'.pdf', '.txt', '.log', '.md', '.csv', '.json', '.xml'}
 ```
 
-### Key methods
+Database persistence is handled by [persistence/db.py](persistence/db.py):
+
+```python
+from persistence.db import HashDatabase
+
+db = HashDatabase("hashextractor.db")
+
+# Retrieve all scans from the last 30 days
+scans = db.get_scans(since="2026-05-01T00:00:00")
+
+# Retrieve per-file hash rows for a given scan id
+rows = db.get_results(scan_id=1)
+```
+
+### Key methods — HashExtractor
 
 | Method | Description |
 |--------|-------------|
@@ -169,6 +213,14 @@ print(SUPPORTED_EXTENSIONS)               # {'.pdf', '.txt', '.log', '.md', '.cs
 | `status_callback` | `(str)` | When a file is skipped due to an error. |
 | `result_callback` | `(file_path, file_type, hash_type, hash_value)` | For each hash found. |
 
+### Key methods — HashDatabase
+
+| Method | Description |
+|--------|-------------|
+| `save_scan(...)` | Persists scan metadata and all per-file hash results to the database. |
+| `get_scans(since=None)` | Returns a list of scan records, optionally filtered by ISO-format timestamp. |
+| `get_results(scan_id)` | Returns all per-file hash rows for the given scan id. |
+
 The GUI in [hashExtractor.py](hashExtractor.py) wires these callbacks to PyQt5 signals emitted by a `ScanWorker` running in a `QThread`.
 
 ## Building a Standalone Executable
@@ -177,4 +229,4 @@ The GUI in [hashExtractor.py](hashExtractor.py) wires these callbacks to PyQt5 s
 python -m PyInstaller --clean --onefile --windowed --name HashExtractor --hidden-import PyQt5.sip --add-data "README.md;." hashExtractor.py
 ```
 
-`--add-data "README.md;."` bundles this README so the in-app README viewer works from the compiled executable.
+`--add-data "README.md;."` bundles this README so the in-app README viewer works from the compiled executable. The database file (`hashextractor.db`) is written next to the compiled executable at runtime.

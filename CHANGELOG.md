@@ -5,6 +5,18 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ---
 
+## [[v0.5.0] - 06-19-2026 18:21:48]
+
+### Added
+- `persistence/` package (`persistence/db.py`, `persistence/__init__.py`) with `HashDatabase` class — SQLite-backed store for scan metadata and per-file hash results
+- `ScanHistoryDialog` — modal dialog listing past scans with time-range filtering (Today / 7 / 30 / 90 days / All time) and a "Load Selected" action to restore historical results into the main UI
+- "Scan History" button in the main toolbar that opens `ScanHistoryDialog`
+- `open_scan_history()` and `_load_historical_results()` methods on `pdfAnalysis` to launch the dialog and repopulate results from a historical scan record
+
+### Changed
+- `scan_complete()` now persists each finished scan to the SQLite database; status label updates to "Scan complete — saved to database." on success, or shows the error on failure
+- `.gitignore` updated to exclude `*.db` files and moved `tests/` to an explicit bottom-of-file entry
+
 ## [v0.4.0] — 06-18-2026 17:16:48
 
 ### Added
