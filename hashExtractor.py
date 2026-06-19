@@ -1,3 +1,5 @@
+"""PyQt5 desktop application for extracting cryptographic hashes from files."""
+
 import csv
 import json
 import os
@@ -88,7 +90,7 @@ class ReadmeWindow(QDialog):
 
 
 class pdfAnalysis(QDialog):
-    """Main HashExtractor application dialog."""
+    """Main Cryptographic Hash Extractor application dialog."""
 
     def __init__(self):
         """Build the GUI, initialize state, and connect widget signals."""
@@ -236,7 +238,7 @@ class pdfAnalysis(QDialog):
 
         self.setLayout(main_layout)
         self.setGeometry(200, 200, 1050, 400)
-        self.setWindowTitle("Cryptographic Hash Extractor v0.4")
+        self.setWindowTitle("Cryptographic Hash Extractor v0.4 (labgeek)")
         self.setFocus()
 
         self.execute.clicked.connect(self.search)
