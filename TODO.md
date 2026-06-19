@@ -1,8 +1,5 @@
 # TODO
 
-Actionable backlog for upcoming HashExtractor releases. Broader product ideas live in
-[FEATURE_ROADMAP.md](FEATURE_ROADMAP.md).
-
 ## Next Release
 
 - [ ] Add a `Cancel Scan` button that stops the worker cleanly between files.
