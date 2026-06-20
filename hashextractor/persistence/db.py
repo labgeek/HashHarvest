@@ -1,7 +1,10 @@
 import os
 import sqlite3
 
-
+# Added on 6/19/2024: This module provides a simple interface for storing and retrieving
+# hash scan results using SQLite. It defines a HashDatabase class that manages the database
+# connection and provides methods to save scan results and query past scans. The database
+# schema includes two tables: 'scans' for metadata about each scan and 'hash_results
 class HashDatabase:
     def __init__(self, db_path):
         self._db_path = db_path
