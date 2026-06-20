@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import xml.etree.ElementTree as ET
+import zipfile
 
 import pypdf
 
@@ -67,6 +68,69 @@ def read_xml(path):
     return "\n".join(_collect_xml_text(root))
 
 
+_W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_S_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+_A_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+
+
+def read_docx(path):
+    with zipfile.ZipFile(path) as archive:
+        with archive.open("word/document.xml") as fh:
+            tree = ET.parse(fh)
+    root = tree.getroot()
+    lines = []
+    for paragraph in root.iter(_W_NS + "p"):
+        text = "".join(node.text or "" for node in paragraph.iter(_W_NS + "t"))
+        lines.append(text)
+    return "\n".join(lines)
+
+
+def _collect_ooxml_text(root, ns, container):
+    """One line per container element, reassembling its <t> runs."""
+    return [
+        "".join(node.text or "" for node in item.iter(ns + "t"))
+        for item in root.iter(ns + container)
+    ]
+
+
+def read_xlsx(path):
+    # Text cells are stored either in the shared-string table (Excel default,
+    # <si> in sharedStrings.xml) or inline in each worksheet (<is>, used by
+    # openpyxl and others). Read both so no string source is missed.
+    lines = []
+    with zipfile.ZipFile(path) as archive:
+        names = archive.namelist()
+        if "xl/sharedStrings.xml" in names:
+            with archive.open("xl/sharedStrings.xml") as fh:
+                root = ET.parse(fh).getroot()
+            lines.extend(_collect_ooxml_text(root, _S_NS, "si"))
+        worksheets = sorted(
+            name for name in names
+            if name.startswith("xl/worksheets/") and name.endswith(".xml")
+        )
+        for name in worksheets:
+            with archive.open(name) as fh:
+                root = ET.parse(fh).getroot()
+            lines.extend(_collect_ooxml_text(root, _S_NS, "is"))
+    return "\n".join(lines)
+
+
+def read_pptx(path):
+    lines = []
+    with zipfile.ZipFile(path) as archive:
+        slides = sorted(
+            name for name in archive.namelist()
+            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        )
+        for name in slides:
+            with archive.open(name) as fh:
+                tree = ET.parse(fh)
+            for paragraph in tree.getroot().iter(_A_NS + "p"):
+                text = "".join(node.text or "" for node in paragraph.iter(_A_NS + "t"))
+                lines.append(text)
+    return "\n".join(lines)
+
+
 _DISPATCH = {
     ".pdf":  read_pdf,
     ".txt":  read_text,
@@ -75,6 +139,9 @@ _DISPATCH = {
     ".csv":  read_csv,
     ".json": read_json,
     ".xml":  read_xml,
+    ".docx": read_docx,
+    ".xlsx": read_xlsx,
+    ".pptx": read_pptx,
 }
 
 SUPPORTED_EXTENSIONS = set(_DISPATCH.keys())

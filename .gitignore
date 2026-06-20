@@ -9,3 +9,4 @@ HashExtractor.spec
 testFiles/
 tests/
 .env
+requirements-dev.txt
