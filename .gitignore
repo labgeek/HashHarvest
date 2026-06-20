@@ -13,3 +13,6 @@ testFiles/
 out/
 tests/
 *.db
+howtobuild.md
+HashExtractor.spec
+pyi_hooks/
