@@ -33,10 +33,10 @@ pip install -r requirements.txt
 ### Launch
 
 ```bash
-python -m hashextractor.main
+python -m hashharvest.main
 ```
 
-> Run it as a module with `-m` from the project root. Running the file directly (`python hashextractor/main.py`) will fail, because the package uses absolute imports that require the project root on `sys.path`.
+> Run it as a module with `-m` from the project root. Running the file directly (`python hashharvest/main.py`) will fail, because the package uses absolute imports that require the project root on `sys.path`.
 
 ---
 
@@ -50,7 +50,7 @@ Requires PyInstaller:
 
 ```bash
 pip install pyinstaller
-pyinstaller HashExtractor.spec
+pyinstaller HashHarvest.spec
 ```
 
 The executable is written to `dist\HashHarvest.exe`.
@@ -59,7 +59,7 @@ The executable is written to `dist\HashHarvest.exe`.
 
 Double-click `HashHarvest.exe` — no Python installation required.
 
-> **Note:** The `hashextractor.db` scan database and the `.env` config file (for VirusTotal) are stored in the same folder as the executable. Keep them together.
+> **Note:** The `hashharvest.db` scan database and the `.env` config file (for VirusTotal) are stored in the same folder as the executable. Keep them together.
 
 ---
 
@@ -144,7 +144,7 @@ The free VT tier allows 4 requests per minute. The on-demand model (one lookup p
 
 ### Cached Results
 
-Results are cached locally in `hashextractor.db`. Re-looking up the same hash returns the cached result instantly without consuming an API call. Use the **Refresh** button in the enrichment panel to force a fresh lookup.
+Results are cached locally in `hashharvest.db`. Re-looking up the same hash returns the cached result instantly without consuming an API call. Use the **Refresh** button in the enrichment panel to force a fresh lookup.
 
 ---
 

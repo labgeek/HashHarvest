@@ -51,7 +51,7 @@ The Office formats (`.docx`, `.xlsx`, `.pptx`) are read directly from their unde
 - **Export JSON** button saves results to a JSON file of your choosing after the scan completes.
 - Export buttons are disabled until a scan finishes successfully; loading a historical scan re-enables them.
 - **Scan History** button opens a filterable list of past scans stored in the local database.
-- Every completed scan is automatically persisted to a local SQLite database (`hashextractor.db`).
+- Every completed scan is automatically persisted to a local SQLite database (`hashharvest.db`).
 - Historical scan results can be loaded back into the main UI and exported like a fresh scan.
 - Clear Form button resets all inputs, results, progress, summary fields, and export buttons.
 - Duplicate hashes within the same file are written once.
@@ -83,10 +83,10 @@ python -m pip install -r requirements-dev.txt
 
 ```powershell
 cd C:\path\to\HashHarvest
-python -m hashextractor.main
+python -m hashharvest.main
 ```
 
-> Run as a module with `-m` from the project root. The Python package is still named `hashextractor` internally, so the import path is unchanged.
+> Run as a module with `-m` from the project root so the `hashharvest` package imports resolve.
 
 ### GUI Controls
 
@@ -106,7 +106,7 @@ You can type a path directly into the Input Directory field instead of using the
 
 ## Scan History
 
-Every time a scan completes, the results are saved automatically to `hashextractor.db` (a SQLite file written next to the executable or script). Click **Scan History** to open the history dialog.
+Every time a scan completes, the results are saved automatically to `hashharvest.db` (a SQLite file written next to the executable or script). Click **Scan History** to open the history dialog.
 
 ### History Dialog
 
@@ -172,12 +172,12 @@ A flat array of objects, one entry per hash found.
 
 ## Implementation Notes
 
-`HashExtractor` in [extractor.py](extractor.py) has no GUI dependency and can be used independently.
+`HashHarvest` in [extractor.py](hashharvest/extractor.py) has no GUI dependency and can be used independently.
 
 ```python
-from extractor import HashExtractor
+from hashharvest.extractor import HashHarvest
 
-extractor = HashExtractor(directory="/path/to/files")
+extractor = HashHarvest(directory="/path/to/files")
 results = extractor.extract()
 # results: {file_path: set of (hash_type, hash_value) tuples}
 
@@ -185,21 +185,21 @@ extractor.export_csv("/path/to/output.csv")
 extractor.export_json("/path/to/output.json")
 ```
 
-File reading is handled by [readers.py](readers.py), which can also be used directly:
+File reading is handled by [readers.py](hashharvest/readers.py), which can also be used directly:
 
 ```python
-from readers import read_file, SUPPORTED_EXTENSIONS
+from hashharvest.readers import read_file, SUPPORTED_EXTENSIONS
 
 text = read_file("/path/to/report.json")   # returns extracted text as a string
 print(SUPPORTED_EXTENSIONS)               # {'.pdf', '.txt', '.log', '.md', '.csv', '.json', '.xml', '.docx', '.xlsx', '.pptx'}
 ```
 
-Database persistence is handled by [persistence/db.py](persistence/db.py):
+Database persistence is handled by [persistence/db.py](hashharvest/persistence/db.py):
 
 ```python
-from persistence.db import HashDatabase
+from hashharvest.persistence.db import HashDatabase
 
-db = HashDatabase("hashextractor.db")
+db = HashDatabase("hashharvest.db")
 
 # Retrieve all scans from the last 30 days
 scans = db.get_scans(since="2026-05-01T00:00:00")
@@ -208,7 +208,7 @@ scans = db.get_scans(since="2026-05-01T00:00:00")
 rows = db.get_results(scan_id=1)
 ```
 
-### Key methods — HashExtractor
+### Key methods — HashHarvest
 
 | Method | Description |
 |--------|-------------|
@@ -234,12 +234,12 @@ rows = db.get_results(scan_id=1)
 | `get_scans(since=None)` | Returns a list of scan records, optionally filtered by ISO-format timestamp. |
 | `get_results(scan_id)` | Returns all per-file hash rows for the given scan id. |
 
-The GUI in [main.py](hashextractor/main.py) wires these callbacks to PyQt5 signals emitted by a `ScanWorker` running in a `QThread`.
+The GUI in [main.py](hashharvest/main.py) wires these callbacks to PyQt5 signals emitted by a `ScanWorker` running in a `QThread`.
 
 ## Building a Standalone Executable
 
 ```powershell
-python -m PyInstaller --clean --onefile --windowed --name HashHarvest --hidden-import PyQt5.sip hashextractor/main.py
+python -m PyInstaller --clean --onefile --windowed --name HashHarvest --hidden-import PyQt5.sip hashharvest/main.py
 ```
 
-The database file (`hashextractor.db`) is written next to the compiled executable at runtime.
+The database file (`hashharvest.db`) is written next to the compiled executable at runtime.

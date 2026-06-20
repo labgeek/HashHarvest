@@ -10,7 +10,7 @@
   - overwrite existing `hashOutput.txt`
   - append without writing duplicate header rows
 - [ ] Add a button to open the output folder after a scan.
-- [ ] Rename stale MD5-oriented symbols, comments, and docs to HashExtractor naming.
+- [ ] Rename stale MD5-oriented symbols, comments, and docs to HashHarvest naming.
 
 ## Backend Improvements
 
@@ -55,7 +55,7 @@
 ## Packaging and Release
 
 - [ ] Add a repeatable release build script for PyInstaller.
-- [ ] Decide whether `HashExtractor.spec` should be tracked as release configuration.
+- [ ] Decide whether `HashHarvest.spec` should be tracked as release configuration.
 - [ ] Add version metadata to the Windows executable.
 - [ ] Add a GitHub release checklist.
 - [ ] Include release notes guidance for each version.

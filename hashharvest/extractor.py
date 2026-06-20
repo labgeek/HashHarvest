@@ -3,10 +3,10 @@ import json
 import os
 import re
 
-from hashextractor.readers import read_file, SUPPORTED_EXTENSIONS
+from hashharvest.readers import read_file, SUPPORTED_EXTENSIONS
 
 
-class HashExtractor:
+class HashHarvest:
     """Extract MD5, SHA1, SHA256, and SHA512 hashes from supported files."""
 
     # Ordered largest-first so exact-length negative lookaround prevents overlap.

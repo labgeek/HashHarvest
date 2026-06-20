@@ -5,11 +5,11 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta
-from hashextractor.persistence.db import HashDatabase
+from hashharvest.persistence.db import HashDatabase
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
-from hashextractor.extractor import HashExtractor
+from hashharvest.extractor import HashHarvest
 
 
 class ScanWorker(QObject):
@@ -30,7 +30,7 @@ class ScanWorker(QObject):
     def run(self):
         """Execute extraction and emit completion or failure signals."""
         try:
-            extractor = HashExtractor(self.directory)
+            extractor = HashHarvest(self.directory)
             results = extractor.extract(
                 self.progress_updated.emit,
                 self.status_updated.emit,
@@ -214,12 +214,12 @@ class pdfAnalysis(QDialog):
         self.scan_history_btn.clicked.connect(self.open_scan_history)
 
         if getattr(sys, 'frozen', False):
-            _db_path = os.path.join(os.path.dirname(sys.executable), "hashextractor.db")
+            _db_path = os.path.join(os.path.dirname(sys.executable), "hashharvest.db")
         else:
-            # Go up one level from hashextractor/ to the project root
+            # Go up one level from hashharvest/ to the project root
             _db_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "hashextractor.db"
+                "hashharvest.db"
             )
         self.db = HashDatabase(_db_path)
 

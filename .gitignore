@@ -5,7 +5,7 @@ build/
 *.db
 docs/
 scripts/
-HashExtractor.spec
+HashHarvest.spec
 testFiles/
 tests/
 .env
