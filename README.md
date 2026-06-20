@@ -4,7 +4,9 @@ Author: labgeek@gmail.com (JD Durick)
 
 `HashHarvest` is a PyQt5 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, Markdown, and Microsoft Office files (Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`) — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs, exportable to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
 
-<img width="1660" height="427" alt="image" src="https://github.com/user-attachments/assets/f56c5d14-7dad-42d1-bfb7-95fad9d6c673" />
+<img width="1907" height="837" alt="image" src="https://github.com/user-attachments/assets/ca34ed55-b0fb-48be-9817-0e56cb9bae1c" />
+
+
 
 
 ## Supported File Types
@@ -71,13 +73,6 @@ Install dependencies from the project root:
 ```powershell
 python -m pip install -r requirements.txt
 ```
-
-To run the test suite or regenerate the sample files under `testFiles/`, install the development tooling as well:
-
-```powershell
-python -m pip install -r requirements-dev.txt
-```
-
 
 ## Running the App
 
