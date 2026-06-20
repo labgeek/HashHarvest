@@ -7,6 +7,8 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ## [v0.6.0] - 06-20-2026 12:01:57
 
+Renamed the tool from Cryptographic Hash Extractor to HashHarvest - 6/20/2026
+
 ### Added
 - Full source file path is now shown as a tooltip on hover over the Source File column, so elided paths remain readable (`main.py`)
 
