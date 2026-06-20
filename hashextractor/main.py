@@ -5,11 +5,11 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta
-from persistence.db import HashDatabase
+from hashextractor.persistence.db import HashDatabase
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
-from extractor import HashExtractor
+from hashextractor.extractor import HashExtractor
 
 
 class ScanWorker(QObject):
@@ -204,7 +204,11 @@ class pdfAnalysis(QDialog):
         if getattr(sys, 'frozen', False):
             _db_path = os.path.join(os.path.dirname(sys.executable), "hashextractor.db")
         else:
-            _db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hashextractor.db")
+            # Go up one level from hashextractor/ to the project root
+            _db_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "hashextractor.db"
+            )
         self.db = HashDatabase(_db_path)
 
     def browse_pdf_directory(self):

@@ -3,7 +3,7 @@ import json
 import os
 import re
 
-from readers import read_file, SUPPORTED_EXTENSIONS
+from hashextractor.readers import read_file, SUPPORTED_EXTENSIONS
 
 
 class HashExtractor:
