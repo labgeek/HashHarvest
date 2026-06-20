@@ -111,10 +111,17 @@ class pdfAnalysis(QDialog):
         self.results_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.results_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.results_table.setAlternatingRowColors(True)
-        self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.results_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        # Paths are long; elide the middle so the drive and filename stay visible.
+        self.results_table.setTextElideMode(Qt.ElideMiddle)
+        header = self.results_table.horizontalHeader()
+        # All columns are user-resizable so any of them can be dragged wider.
+        for col in range(self.results_table.columnCount()):
+            header.setSectionResizeMode(col, QHeaderView.Interactive)
+        # Let the last column absorb leftover space so there's no trailing gap.
+        header.setStretchLastSection(True)
+        self.results_table.setColumnWidth(0, 420)
+        self.results_table.setColumnWidth(1, 90)
+        self.results_table.setColumnWidth(2, 90)
 
         pdf_layout.addWidget(QLabel("Input Directory"))
         pdf_layout.addWidget(self.dir)
@@ -249,7 +256,11 @@ class pdfAnalysis(QDialog):
         """Append one result row to the results table."""
         row = self.results_table.rowCount()
         self.results_table.insertRow(row)
-        self.results_table.setItem(row, 0, QTableWidgetItem(source))
+        # The Source File column is stretched to fit the viewport, so long paths
+        # are elided. Keep the full path available as a tooltip on hover.
+        source_item = QTableWidgetItem(source)
+        source_item.setToolTip(source)
+        self.results_table.setItem(row, 0, source_item)
         self.results_table.setItem(row, 1, QTableWidgetItem(file_type))
         self.results_table.setItem(row, 2, QTableWidgetItem(hash_type))
         self.results_table.setItem(row, 3, QTableWidgetItem(hash_value))

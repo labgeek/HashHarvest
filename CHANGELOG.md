@@ -5,6 +5,18 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ---
 
+## [06-20-2026 11:41:46]
+
+### Added
+- Full source file path is now shown as a tooltip on hover over the Source File column, so elided paths remain readable (`main.py`)
+
+### Changed
+- Results table columns are all user-resizable (`Interactive`) with sensible default widths; the last column stretches to fill leftover space (`main.py`)
+- Results table now elides long text in the middle (`ElideMiddle`) so the drive root and filename of a path stay visible when a column is narrow (`main.py`)
+- README documents the new `.docx`/`.xlsx`/`.pptx` parsing (file-types table and scope notes), notes that Office parsing adds no runtime dependencies, adds `requirements-dev.txt` install instructions, and corrects the `SUPPORTED_EXTENSIONS` example (`README.md`)
+
+---
+
 ## [v0.5.1] - 06-20-2026 10:48:37
 
 ### Changed

@@ -2,7 +2,7 @@
 
 Author: labgeek@gmail.com (JD Durick)
 
-`HashExtractor` is a PyQt5 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, and Markdown files — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs, exportable to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
+`HashExtractor` is a PyQt5 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, Markdown, and Microsoft Office files (Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`) — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs, exportable to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
 
 <img width="1660" height="427" alt="image" src="https://github.com/user-attachments/assets/f56c5d14-7dad-42d1-bfb7-95fad9d6c673" />
 
@@ -18,8 +18,13 @@ Author: labgeek@gmail.com (JD Durick)
 | `.csv`    | All cell values joined as searchable text |
 | `.json`   | Recursive walk — all keys and scalar values |
 | `.xml`    | All element text and tail text |
+| `.docx`   | Word document body — paragraph text from `word/document.xml` |
+| `.xlsx`   | Excel cell text — both the shared-string table and inline worksheet strings |
+| `.pptx`   | PowerPoint slide text — paragraph runs from every `ppt/slides/slideN.xml` |
 
 Extensions are matched case-insensitively. Files with other extensions are ignored.
+
+The Office formats (`.docx`, `.xlsx`, `.pptx`) are read directly from their underlying OpenXML zip packages using the Python standard library — no third-party Office libraries are required at runtime. Text split across multiple runs within a paragraph or cell is reassembled, so a hash broken into pieces by the authoring tool is still matched. Scope notes: `.docx` reads the main document body (not headers, footers, or footnotes); `.xlsx` reads string cells from all worksheets (numeric cells never hold hash strings); `.pptx` reads slide bodies (not speaker notes or masters).
 
 
 ## Supported Hash Types
@@ -58,10 +63,18 @@ Extensions are matched case-insensitively. Files with other extensions are ignor
 - `pypdf`
 - `PyQt5`
 
+Office (`.docx`/`.xlsx`/`.pptx`) parsing uses only the Python standard library, so it adds no runtime dependencies.
+
 Install dependencies from the project root:
 
 ```powershell
 python -m pip install -r requirements.txt
+```
+
+To run the test suite or regenerate the sample files under `testFiles/`, install the development tooling as well:
+
+```powershell
+python -m pip install -r requirements-dev.txt
 ```
 
 
@@ -175,7 +188,7 @@ File reading is handled by [readers.py](readers.py), which can also be used dire
 from readers import read_file, SUPPORTED_EXTENSIONS
 
 text = read_file("/path/to/report.json")   # returns extracted text as a string
-print(SUPPORTED_EXTENSIONS)               # {'.pdf', '.txt', '.log', '.md', '.csv', '.json', '.xml'}
+print(SUPPORTED_EXTENSIONS)               # {'.pdf', '.txt', '.log', '.md', '.csv', '.json', '.xml', '.docx', '.xlsx', '.pptx'}
 ```
 
 Database persistence is handled by [persistence/db.py](persistence/db.py):
