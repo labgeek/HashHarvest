@@ -367,11 +367,19 @@ class pdfAnalysis(QDialog):
         event.accept()
 
     def open_scan_history(self):
+        """Open the Scan History dialog and connect its load signal."""
         dialog = ScanHistoryDialog(self.db, self)
         dialog.results_load_requested.connect(self._load_historical_results)
         dialog.exec_()
 
     def _load_historical_results(self, scan, rows):
+        """Populate the UI with results loaded from a historical scan record.
+
+        Args:
+            scan: A dict of scan metadata (directory, scanned_at, files_scanned, etc.).
+            rows: A list of result dicts, each with file_path, file_type, and per-algorithm
+                hash columns (md5, sha1, sha256, sha512).
+        """
         self.reset_scan_output()
         scan_results = {}
         for row in rows:
@@ -433,6 +441,12 @@ class pdfAnalysis(QDialog):
 
 
 class ScanHistoryDialog(QDialog):
+    """Dialog that lists past scans and allows loading a previous result set into the main window.
+
+    Emits ``results_load_requested(scan_dict, rows_list)`` when the user chooses to
+    reload a historical scan.
+    """
+
     results_load_requested = pyqtSignal(dict, list)
 
     TIME_RANGES = [
@@ -444,6 +458,12 @@ class ScanHistoryDialog(QDialog):
     ]
 
     def __init__(self, db, parent=None):
+        """Build the history dialog, load the default time range, and wire up signals.
+
+        Args:
+            db: A ``HashDatabase`` instance used to query past scans and their results.
+            parent: Optional parent widget.
+        """
         QDialog.__init__(self, parent)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.db = db
@@ -505,6 +525,15 @@ class ScanHistoryDialog(QDialog):
         self._refresh()
 
     def _since_for_index(self, index):
+        """Return an ISO-8601 timestamp lower bound for the selected time-range combo index.
+
+        Args:
+            index: Index into ``TIME_RANGES``.
+
+        Returns:
+            An ISO-8601 string (e.g. ``"2026-05-21T00:00:00"``) representing the earliest
+            scan time to include, or ``None`` when the range is "All time".
+        """
         _, days = self.TIME_RANGES[index]
         if days is None:
             return None
@@ -515,6 +544,7 @@ class ScanHistoryDialog(QDialog):
         return (datetime.now() - timedelta(days=days)).isoformat()
 
     def _refresh(self):
+        """Reload the scans table from the database for the currently selected time range."""
         since = self._since_for_index(self.time_range_combo.currentIndex())
         self._scan_rows = self.db.get_scans(since=since)
         self.scans_table.setRowCount(0)
@@ -534,6 +564,7 @@ class ScanHistoryDialog(QDialog):
             )
 
     def _load_selected(self):
+        """Emit ``results_load_requested`` for the highlighted scan row and close the dialog."""
         row_index = self.scans_table.currentRow()
         if row_index < 0:
             return
