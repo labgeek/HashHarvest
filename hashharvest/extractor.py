@@ -3,7 +3,7 @@ import json
 import os
 import re
 
-from hashharvest.readers import read_file, SUPPORTED_EXTENSIONS
+from hashharvest.readers import read_file_chunks, SUPPORTED_EXTENSIONS
 
 
 class HashHarvest:
@@ -42,12 +42,15 @@ class HashHarvest:
         Args:
             progress_callback: Optional callable receiving an integer percentage.
             status_callback: Optional callable receiving skipped-file messages.
-            result_callback: Optional callable receiving each ``file_path, file_type, hash_type, hash_value`` tuple.
+            result_callback: Optional callable receiving
+                ``(file_path, file_type, hash_type, hash_value, line_no, context)``.
             hash_types: Optional set of algorithm names to scan for (e.g. ``{'MD5', 'SHA256'}``).
                         Defaults to all supported algorithms when ``None``.
 
         Returns:
-            A dictionary mapping file paths to sets of (hash_type, hash_value) tuples.
+            A dictionary mapping file paths to sets of
+            ``(hash_type, hash_value, line_no, context)`` tuples. Only the first
+            occurrence of each (hash_type, hash_value) pair per file is kept.
         """
         self.results = {}
         self.errors = []
@@ -60,12 +63,23 @@ class HashHarvest:
 
         for count, path in enumerate(paths, start=1):
             try:
-                content = read_file(path)
-                found = set()
-                for hash_type, pattern in patterns.items():
-                    for value in re.findall(pattern, content):
-                        found.add((hash_type, value.lower()))
-                self.results[path] = found
+                chunks = read_file_chunks(path)
+                found = {}  # (hash_type, hash_value) -> (line_no, context)
+                for chunk_text, location in chunks:
+                    for hash_type, pattern in patterns.items():
+                        for match in re.finditer(pattern, chunk_text):
+                            key = (hash_type, match.group().lower())
+                            if key not in found:
+                                line_no = chunk_text[:match.start()].count('\n') + 1
+                                ctx_start = max(0, match.start() - 60)
+                                ctx_end = min(len(chunk_text), match.end() + 60)
+                                ctx = chunk_text[ctx_start:ctx_end].replace('\n', ' ').strip()
+                                if location:
+                                    ctx = "[%s] %s" % (location, ctx)
+                                found[key] = (line_no, ctx)
+                self.results[path] = {
+                    (ht, hv, ln, ctx) for (ht, hv), (ln, ctx) in found.items()
+                }
             except Exception as error:
                 self.errors.append((path, str(error)))
                 if status_callback is not None:
@@ -73,8 +87,8 @@ class HashHarvest:
             else:
                 if result_callback is not None:
                     file_type = os.path.splitext(path)[1].lstrip('.').upper()
-                    for hash_type, hash_value in sorted(self.results[path]):
-                        result_callback(path, file_type, hash_type, hash_value)
+                    for hash_type, hash_value, line_no, context in sorted(self.results[path]):
+                        result_callback(path, file_type, hash_type, hash_value, line_no, context)
 
             if progress_callback is not None and total > 0:
                 progress_callback(int(count * 100 / total))
@@ -85,16 +99,22 @@ class HashHarvest:
         """Write results to a CSV file at the given path."""
         with open(path, mode='w', newline='') as f:
             writer = csv.writer(f, lineterminator='\n')
-            writer.writerow(['Absolute_Path', 'Hash_Type', 'Hash_Value'])
+            writer.writerow(['Absolute_Path', 'Hash_Type', 'Hash_Value', 'Line', 'Context'])
             for file_path, hashes in sorted(self.results.items()):
-                for hash_type, hash_value in sorted(hashes):
-                    writer.writerow([file_path, hash_type, hash_value])
+                for hash_type, hash_value, line_no, context in sorted(hashes):
+                    writer.writerow([file_path, hash_type, hash_value, line_no, context])
 
     def export_json(self, path):
         """Write results to a JSON file at the given path."""
         rows = []
         for file_path, hashes in sorted(self.results.items()):
-            for hash_type, hash_value in sorted(hashes):
-                rows.append({"absolute_path": file_path, "hash_type": hash_type, "hash_value": hash_value})
+            for hash_type, hash_value, line_no, context in sorted(hashes):
+                rows.append({
+                    "absolute_path": file_path,
+                    "hash_type": hash_type,
+                    "hash_value": hash_value,
+                    "line": line_no,
+                    "context": context,
+                })
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(rows, f, indent=2)

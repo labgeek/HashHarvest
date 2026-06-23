@@ -7,6 +7,18 @@ import zipfile
 import pypdf
 
 
+def _read_pdf_chunks(path):
+    """Return one (text, location) tuple per page that has extractable text."""
+    chunks = []
+    with open(path, "rb") as fh:
+        reader = pypdf.PdfReader(fh)
+        for i, page in enumerate(reader.pages, start=1):
+            text = page.extract_text() or ""
+            if text.strip():
+                chunks.append((text, "page %d" % i))
+    return chunks or [("", "")]
+
+
 def read_pdf(path):
     """Extract text from a PDF file, concatenating all pages.
 
@@ -16,12 +28,7 @@ def read_pdf(path):
     Returns:
         A string containing the extracted text from every page, separated by newlines.
     """
-    content = ""
-    with open(path, "rb") as fh:
-        reader = pypdf.PdfReader(fh)
-        for page in reader.pages:
-            content += (page.extract_text() or "") + "\n"
-    return content
+    return "\n".join(text for text, _ in _read_pdf_chunks(path))
 
 
 def read_text(path):
@@ -206,6 +213,27 @@ def read_xlsx(path):
     return "\n".join(lines)
 
 
+def _read_pptx_chunks(path):
+    """Return one (text, location) tuple per slide that has text content."""
+    chunks = []
+    with zipfile.ZipFile(path) as archive:
+        slides = sorted(
+            name for name in archive.namelist()
+            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        )
+        for i, name in enumerate(slides, start=1):
+            with archive.open(name) as fh:
+                tree = ET.parse(fh)
+            lines = [
+                "".join(node.text or "" for node in para.iter(_A_NS + "t"))
+                for para in tree.getroot().iter(_A_NS + "p")
+            ]
+            text = "\n".join(lines)
+            if text.strip():
+                chunks.append((text, "slide %d" % i))
+    return chunks or [("", "")]
+
+
 def read_pptx(path):
     """Extract paragraph text from all slides in a .pptx file.
 
@@ -218,19 +246,7 @@ def read_pptx(path):
     Returns:
         A string with one paragraph per line across all slides.
     """
-    lines = []
-    with zipfile.ZipFile(path) as archive:
-        slides = sorted(
-            name for name in archive.namelist()
-            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
-        )
-        for name in slides:
-            with archive.open(name) as fh:
-                tree = ET.parse(fh)
-            for paragraph in tree.getroot().iter(_A_NS + "p"):
-                text = "".join(node.text or "" for node in paragraph.iter(_A_NS + "t"))
-                lines.append(text)
-    return "\n".join(lines)
+    return "\n".join(text for text, _ in _read_pptx_chunks(path))
 
 
 _DISPATCH = {
@@ -266,3 +282,27 @@ def read_file(path):
     if reader is None:
         raise ValueError("Unsupported file type: %s" % ext)
     return reader(path)
+
+
+def read_file_chunks(path):
+    """Return a list of (text, location_label) tuples for the file.
+
+    PDF returns one tuple per page; PPTX returns one tuple per slide.
+    All other formats return a single tuple with an empty location label —
+    the line number within the flat text is the meaningful coordinate.
+
+    Args:
+        path: Path to the file.
+
+    Returns:
+        A list of (text, location) tuples.
+
+    Raises:
+        ValueError: If the file extension is not in ``SUPPORTED_EXTENSIONS``.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext == '.pdf':
+        return _read_pdf_chunks(path)
+    if ext == '.pptx':
+        return _read_pptx_chunks(path)
+    return [(read_file(path), "")]

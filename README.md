@@ -2,7 +2,7 @@
 
 Author: labgeek@gmail.com
 
-`HashHarvest` is a PyQt5 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, Markdown, and Microsoft Office files (Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`) — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs, exportable to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
+`HashHarvest` (v0.7.0) is a PyQt5 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, Markdown, and Microsoft Office files (Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`) — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs with the line number and surrounding context for each hit, and can be filtered in real time, right-click copied, exported to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Watchlist lets you import known-bad hash lists and instantly highlights any matches red after each scan. A Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
 
 <img width="1907" height="837" alt="image" src="https://github.com/user-attachments/assets/ca34ed55-b0fb-48be-9817-0e56cb9bae1c" />
 
@@ -13,7 +13,7 @@ Author: labgeek@gmail.com
 
 | Extension | How text is extracted |
 |-----------|----------------------|
-| `.pdf`    | Page text via `pypdf` |
+| `.pdf`    | Page text via `pypdf`; location label shows page number in context |
 | `.txt`    | Plain text, UTF-8 with latin-1 fallback |
 | `.log`    | Plain text, UTF-8 with latin-1 fallback |
 | `.md`     | Plain text, UTF-8 with latin-1 fallback |
@@ -22,7 +22,7 @@ Author: labgeek@gmail.com
 | `.xml`    | All element text and tail text |
 | `.docx`   | Word document body — paragraph text from `word/document.xml` |
 | `.xlsx`   | Excel cell text — both the shared-string table and inline worksheet strings |
-| `.pptx`   | PowerPoint slide text — paragraph runs from every `ppt/slides/slideN.xml` |
+| `.pptx`   | PowerPoint slide text — paragraph runs from every `ppt/slides/slideN.xml`; location label shows slide number in context |
 
 Extensions are matched case-insensitively. Files with other extensions are ignored.
 
@@ -44,19 +44,25 @@ The Office formats (`.docx`, `.xlsx`, `.pptx`) are read directly from their unde
 - Detects MD5, SHA1, SHA256, and SHA512 hashes across all supported file types in a single scan.
 - Recursive directory search — all supported files under the selected folder are included.
 - Threaded extraction keeps the GUI responsive during long scans.
-- Results table with four columns: **Source File**, **File Type**, **Hash Type**, and **Hash Value**.
+- **Results table** with six columns: **Source File**, **File Type**, **Hash Type**, **Hash Value**, **Line**, and **Context**.
+- **Line number** and **surrounding context** (up to 60 characters either side of the match) captured for every hash; PDF and PPTX hits include a `[page N]` / `[slide N]` prefix in the context string.
+- **Show Context** checkbox toggles the Line and Context columns; column stretch shifts automatically so the table always fills the window cleanly.
+- **Filter bar** above the results table — type any text to instantly hide non-matching rows across all columns; cleared automatically on each new scan.
+- **Right-click context menu** on any result row: **Copy Hash** copies the hash value; **Copy Row** copies all visible columns as tab-separated text.
+- Column sorting by clicking any header (disabled during a live scan to prevent row-jump artifacts; re-enabled on completion).
 - Alternating row colors, and every column is user-resizable by dragging its header border.
 - Long source paths are middle-elided (drive and filename stay visible) and the full path is shown as a tooltip on hover.
 - Progress bar that updates per file processed.
 - Scan summary panel showing files scanned, hashes found, and skipped files.
-- **Export CSV** button saves results to a CSV file of your choosing after the scan completes.
-- **Export JSON** button saves results to a JSON file of your choosing after the scan completes.
+- **Export CSV** button saves results to a CSV file of your choosing after the scan completes (includes Line and Context columns).
+- **Export JSON** button saves results to a JSON file of your choosing after the scan completes (includes `line` and `context` fields).
 - Export buttons are disabled until a scan finishes successfully; loading a historical scan re-enables them.
 - **Scan History** button opens a filterable list of past scans stored in the local database.
 - Every completed scan is automatically persisted to a local SQLite database (`hashharvest.db`).
-- Historical scan results can be loaded back into the main UI and exported like a fresh scan.
+- Historical scan results can be loaded back into the main UI, including watchlist highlights, and exported like a fresh scan.
+- **Watchlist** — import known-bad hash lists from paste, TXT, CSV, or any structured text; after every scan (and when reloading history), matching rows are highlighted red and a hit count badge appears in the status bar.
 - Clear Form button resets all inputs, results, progress, summary fields, and export buttons.
-- Duplicate hashes within the same file are written once.
+- Only the first occurrence of each (algorithm, hash value) pair per file is kept — duplicates within the same file are not repeated.
 - Skipped files (unreadable or malformed) are counted but do not stop the scan.
 
 
@@ -93,10 +99,69 @@ python -m hashharvest.main
 | **Start Scan** | Validates the input directory and begins the threaded scan. |
 | **Clear Form** | Resets all fields, the results table, the progress bar, and summary counts. |
 | **Scan History** | Opens the Scan History dialog to browse and reload past scans. |
+| **Watchlist** | Opens the Watchlist Manager to create watchlists and import known-bad hashes. |
 | **Export CSV** | Opens a save dialog and writes the current results to a CSV file. Enabled after a successful scan or after loading history. |
 | **Export JSON** | Opens a save dialog and writes the current results to a JSON file. Enabled after a successful scan or after loading history. |
 
 You can type a path directly into the Input Directory field instead of using the folder picker.
+
+
+## Results Table
+
+The results table has six columns:
+
+| Column | Description |
+|--------|-------------|
+| **Source File** | Path of the file containing the hash. Middle-elided when long; full path shown as tooltip. |
+| **File Type** | File extension in uppercase (e.g. `PDF`, `LOG`, `DOCX`). |
+| **Hash Type** | Algorithm: `MD5`, `SHA1`, `SHA256`, or `SHA512`. |
+| **Hash Value** | Lowercase hexadecimal hash string. This column stretches to fill available width by default. |
+| **Line** | Line number within the file where the hash first appears (hidden by default). |
+| **Context** | Up to 60 characters on either side of the match, with newlines collapsed. PDF pages prefixed `[page N]`, PPTX slides prefixed `[slide N]`. Stretches to fill width when visible. |
+
+**Line** and **Context** are hidden by default. Toggle them with the **Show Context** checkbox above the table.
+
+### Filtering
+
+Type any text into the filter bar above the table to hide rows that do not match. Filtering is applied across all columns simultaneously. The filter is cleared automatically at the start of each new scan.
+
+### Right-click actions
+
+Right-click any row for:
+
+| Action | Copies |
+|--------|--------|
+| **Copy Hash** | The hash value from the selected row. |
+| **Copy Row** | All visible columns of the selected row, tab-separated. |
+
+
+## Watchlist
+
+The Watchlist turns HashHarvest from a pure extraction tool into a triage tool: load a list of known-bad hashes and any matches found during a scan are immediately highlighted.
+
+### Opening the Watchlist Manager
+
+Click **Watchlist** in the toolbar. The Watchlist Manager dialog lists all saved watchlists with their entry counts.
+
+### Creating a watchlist
+
+Click **New…**, enter a name (e.g. `Incident 2026-06`, `IOC Feed`), and click OK. The new watchlist appears in the list.
+
+### Importing hashes
+
+1. Select a watchlist in the list.
+2. Either paste hashes into the text area or click **Browse File…** to load a TXT, CSV, or log file.
+3. Click **Import from Text** (or browse — file imports run immediately).
+
+Any MD5, SHA1, SHA256, or SHA512 hex string found anywhere in the input is extracted automatically. You can paste raw hash lists, threat-intel CSV exports, log excerpts — the importer finds the hashes and ignores everything else. Duplicate entries within the same watchlist are silently skipped.
+
+### Matching
+
+After every scan completes, all extracted hashes are joined against all watchlist entries in a single SQLite query. Matching rows in the results table are highlighted **red**. The status bar shows a `⚠ N watchlist hits` badge. Watchlist highlights are also applied when loading a historical scan from Scan History.
+
+### Deleting a watchlist
+
+Select the watchlist and click **Delete Selected**. A confirmation prompt warns you that all entries will be removed. Deletion cannot be undone.
 
 
 ## Scan History
@@ -122,7 +187,7 @@ Use the **Show** drop-down to filter by time range:
 | Last 90 days | Rolling 90-day window |
 | All time | Entire database |
 
-Select a row and click **Load Selected** to restore those results into the main window. The results table, summary counts, and export buttons are all populated exactly as they would be after a live scan.
+Select a row and click **Load Selected** to restore those results into the main window. The results table, summary counts, export buttons, and any watchlist highlights are all populated exactly as they would be after a live scan.
 
 
 ## Exporting Results
@@ -131,13 +196,13 @@ No file is written automatically. After a scan completes (or after loading a his
 
 ### CSV
 
-Columns: `Absolute_Path`, `Hash_Type`, `Hash_Value`.
+Columns: `Absolute_Path`, `Hash_Type`, `Hash_Value`, `Line`, `Context`.
 
 ```csv
-Absolute_Path,Hash_Type,Hash_Value
-C:\path\to\report.pdf,MD5,44d88612fea8a8f36de82e1278abb02f
-C:\path\to\alerts.log,SHA1,da39a3ee5e6b4b0d3255bfef95601890afd80709
-C:\path\to\iocs.json,SHA256,e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+Absolute_Path,Hash_Type,Hash_Value,Line,Context
+C:\path\to\report.pdf,MD5,44d88612fea8a8f36de82e1278abb02f,12,[page 1] Hash: 44d88612fea8a8f36de82e1278abb02f found in
+C:\path\to\alerts.log,SHA1,da39a3ee5e6b4b0d3255bfef95601890afd80709,47,process exited with hash da39a3ee5e6b4b0d3255bfef9560189
+C:\path\to\iocs.json,SHA256,e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,3,"sha256": "e3b0c44298fc1c149afbf4c8996fb924
 ```
 
 ### JSON
@@ -149,21 +214,28 @@ A flat array of objects, one entry per hash found.
   {
     "absolute_path": "C:\\path\\to\\report.pdf",
     "hash_type": "MD5",
-    "hash_value": "44d88612fea8a8f36de82e1278abb02f"
+    "hash_value": "44d88612fea8a8f36de82e1278abb02f",
+    "line": 12,
+    "context": "[page 1] Hash: 44d88612fea8a8f36de82e1278abb02f found in"
   },
   {
     "absolute_path": "C:\\path\\to\\alerts.log",
     "hash_type": "SHA1",
-    "hash_value": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    "hash_value": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+    "line": 47,
+    "context": "process exited with hash da39a3ee5e6b4b0d3255bfef9560189"
   }
 ]
 ```
 
 | Field | Description |
 |-------|-------------|
-| `absolute_path` / `Absolute_Path` | Full file system path of the source file containing the hash. |
-| `hash_type` / `Hash_Type` | Algorithm matched: `MD5`, `SHA1`, `SHA256`, or `SHA512`. |
+| `absolute_path` / `Absolute_Path` | Full file system path of the source file. |
+| `hash_type` / `Hash_Type` | Algorithm: `MD5`, `SHA1`, `SHA256`, or `SHA512`. |
 | `hash_value` / `Hash_Value` | Lowercase hexadecimal hash string. |
+| `line` / `Line` | Line number within the file where the hash first appears. |
+| `context` / `Context` | Surrounding text snippet (up to 60 chars each side of the match). |
+
 
 ## Implementation Notes
 
@@ -174,7 +246,7 @@ from hashharvest.extractor import HashHarvest
 
 extractor = HashHarvest(directory="/path/to/files")
 results = extractor.extract()
-# results: {file_path: set of (hash_type, hash_value) tuples}
+# results: {file_path: set of (hash_type, hash_value, line_no, context) tuples}
 
 extractor.export_csv("/path/to/output.csv")
 extractor.export_json("/path/to/output.json")
@@ -183,10 +255,16 @@ extractor.export_json("/path/to/output.json")
 File reading is handled by [readers.py](hashharvest/readers.py), which can also be used directly:
 
 ```python
-from hashharvest.readers import read_file, SUPPORTED_EXTENSIONS
+from hashharvest.readers import read_file, read_file_chunks, SUPPORTED_EXTENSIONS
 
 text = read_file("/path/to/report.json")   # returns extracted text as a string
-print(SUPPORTED_EXTENSIONS)               # {'.pdf', '.txt', '.log', '.md', '.csv', '.json', '.xml', '.docx', '.xlsx', '.pptx'}
+
+# Chunked reading — PDF returns one (text, "page N") tuple per page;
+# PPTX returns one (text, "slide N") tuple per slide; all others return [(text, "")]
+for chunk_text, location in read_file_chunks("/path/to/slides.pptx"):
+    print(location, chunk_text[:80])
+
+print(SUPPORTED_EXTENSIONS)  # {'.pdf', '.txt', '.log', '.md', '.csv', '.json', '.xml', '.docx', '.xlsx', '.pptx'}
 ```
 
 Database persistence is handled by [persistence/db.py](hashharvest/persistence/db.py):
@@ -201,6 +279,11 @@ scans = db.get_scans(since="2026-05-01T00:00:00")
 
 # Retrieve per-file hash rows for a given scan id
 rows = db.get_results(scan_id=1)
+
+# Watchlist management
+wl_id = db.create_watchlist("Incident 2026-06")
+db.import_hashes(wl_id, ["44d88612fea8a8f36de82e1278abb02f", "da39a3ee5e6b4b0d3255bfef95601890afd80709"])
+matches = db.get_scan_matches(scan_id=1)   # returns set of matching hash_value strings
 ```
 
 ### Key methods — HashHarvest
@@ -210,24 +293,32 @@ rows = db.get_results(scan_id=1)
 | `dir_exists()` | Returns `True` if the configured input directory exists. |
 | `read_dir()` | Recursively finds all supported files under the input directory, sorted. |
 | `extract(...)` | Runs the full scan, fires optional callbacks, and returns results. |
-| `export_csv(path)` | Writes the current results to a CSV file at the given path. |
-| `export_json(path)` | Writes the current results to a JSON file at the given path. |
+| `export_csv(path)` | Writes the current results to a CSV file (includes Line and Context). |
+| `export_json(path)` | Writes the current results to a JSON file (includes `line` and `context`). |
 
-`extract()` accepts three optional callbacks:
+`extract()` accepts four optional parameters:
 
-| Callback | Signature | Fired when |
-|----------|-----------|------------|
-| `progress_callback` | `(int)` | After each file is processed (0–100). |
-| `status_callback` | `(str)` | When a file is skipped due to an error. |
-| `result_callback` | `(file_path, file_type, hash_type, hash_value)` | For each hash found. |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `progress_callback` | `(int) -> None` | Called after each file (0–100). |
+| `status_callback` | `(str) -> None` | Called when a file is skipped due to an error. |
+| `result_callback` | `(file_path, file_type, hash_type, hash_value, line_no, context) -> None` | Called for each hash found. |
+| `hash_types` | `set[str]` | Limit scan to a subset of algorithms, e.g. `{'MD5', 'SHA256'}`. Defaults to all four. |
+
+`extract()` returns `{file_path: set of (hash_type, hash_value, line_no, context) tuples}`.
 
 ### Key methods — HashDatabase
 
 | Method | Description |
 |--------|-------------|
-| `save_scan(...)` | Persists scan metadata and all per-file hash results to the database. |
+| `save_scan(...)` | Persists scan metadata and all per-file hash results; returns the new `scan_id`. |
 | `get_scans(since=None)` | Returns a list of scan records, optionally filtered by ISO-format timestamp. |
 | `get_results(scan_id)` | Returns all per-file hash rows for the given scan id. |
+| `create_watchlist(name)` | Creates a named watchlist and returns its id. |
+| `delete_watchlist(watchlist_id)` | Deletes a watchlist and all its entries. |
+| `get_watchlists()` | Returns all watchlists with their entry counts. |
+| `import_hashes(watchlist_id, hash_values)` | Adds hash strings to a watchlist, skipping duplicates; returns count inserted. |
+| `get_scan_matches(scan_id)` | Returns the set of `hash_value` strings from a scan that match any watchlist entry. |
 
 The GUI in [main.py](hashharvest/main.py) wires these callbacks to PyQt5 signals emitted by a `ScanWorker` running in a `QThread`.
 

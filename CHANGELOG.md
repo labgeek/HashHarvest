@@ -5,6 +5,38 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ---
 
+## [06-23-2026 18:12:53]
+
+### Changed
+- Version bumped to v0.7.0 in the GUI version label and window title (`main.py`)
+
+## [06-23-2026 18:10:22]
+
+### Added
+- **Local Watchlist with Auto-Matching**: import known-bad hashes from paste, TXT, CSV, or any free text into named watchlists; after each scan (and when loading historical scans), extracted hashes are joined against all watchlist entries via a SQLite query and matching rows are highlighted red in the results table with a `⚠ N watchlist hits` badge in the status bar (`db.py`, `main.py`)
+- `WatchlistDialog` class — modal dialog for creating/deleting named watchlists and importing hashes; any MD5/SHA1/SHA256/SHA512 hex string found anywhere in pasted text or a browsed file is extracted automatically, so structured formats (CSV with labels, threat-intel reports) work without pre-processing (`main.py`)
+- `watchlists` and `watchlist_entries` tables added to the SQLite schema with `ON DELETE CASCADE` so deleting a watchlist removes its entries, and an index on `hash_value` for fast post-scan join (`db.py`)
+- Five new `HashDatabase` methods: `get_watchlists()`, `create_watchlist(name)`, `delete_watchlist(watchlist_id)`, `import_hashes(watchlist_id, hash_values)`, `get_scan_matches(scan_id)` (`db.py`)
+- "Watchlist" button in the main toolbar that opens `WatchlistDialog` (`main.py`)
+
+### Changed
+- `scan_complete()` now captures the `scan_id` returned by `save_scan()` and passes it to `_apply_watchlist_highlights()` after a successful save (`main.py`)
+- `_load_historical_results()` calls `_apply_watchlist_highlights()` after populating the results table so historical scans also show watchlist hits (`main.py`)
+
+## [06-23-2026 16:44:25]
+
+### Fixed
+- `hash_results` schema data loss: the old wide schema (one row per file, four nullable hash columns) silently dropped all but one hash per algorithm per file when a document contained multiple hashes of the same type — a threat report with 15 MD5 values would persist only one (`db.py`)
+- `save_scan()` now writes one row per extracted hash via `INSERT OR IGNORE`, so every hash found is stored regardless of how many share the same algorithm for the same file (`db.py`)
+- `_load_historical_results()` rewritten to read the new narrow `hash_type`/`hash_value` columns instead of pivoting four wide nullable columns; also fixed a bug where `scan_results[path] = set()` reset the set on every row for the same file, discarding previously accumulated hashes (`main.py`)
+
+### Changed
+- `hash_results` table restructured from wide format to narrow format: columns `md5`, `sha1`, `sha256`, `sha512` replaced by `hash_type TEXT NOT NULL` and `hash_value TEXT NOT NULL`, with a `UNIQUE(scan_id, file_path, hash_type, hash_value)` constraint (`db.py`)
+- `hash_results` gains `line_number`, `context`, and `annotation` columns (nullable) to support future context-capture and analyst annotation features (`db.py`)
+- Added indexes `idx_hash_results_scan` and `idx_hash_results_value` on `hash_results` for faster per-scan queries and cross-scan hash lookups (`db.py`)
+- `_init_schema()` now runs a one-time automatic migration via `_migrate_wide_to_narrow()` when an existing database with the old wide schema is detected, preserving historical scan data (`db.py`)
+- `get_results()` query updated to select `hash_type, hash_value` and order by `file_path, hash_type` (`db.py`)
+
 ## [v0.6.0] - 06-20-2026 12:01:57
 
 Renamed the tool from Cryptographic Hash Extractor to HashHarvest - 6/20/2026
