@@ -5,6 +5,24 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ---
 
+## [07-18-2026 17:01:08]
+
+### Added
+- **File-digest scan mode** — `hash_files()` in `extractor.py` computes each file's own MD5/SHA1/SHA256/SHA512 digest, walking **all** files under the folder (not just supported document types) and returning the same result shape as `extract()` (`line_no=None`, `"file digest"` context). Exposed in the GUI as a *Find hashes in text* / *Hash the files* radio, wired through `ScanWorker` via a new `mode` parameter (`extractor.py`, `main.py`)
+- **VirusTotal lookup** — new `vt_lookup.py` (`lookup_hashes`, `verdict_from_stats`) queries VirusTotal via `vt-py`; new `VirusTotalDialog` and `VTLookupWorker` plus a "VirusTotal" toolbar button check the current scan's unique hashes in a worker thread, showing per-hash malicious / suspicious / clean / not-found / error verdicts with detection counts, color-coded. SHA512 hashes are labeled `n/a` and skipped without an API call, since VirusTotal indexes only MD5/SHA1/SHA256 (`vt_lookup.py`, `main.py`)
+- **API-key storage with two backends** — new `keystore.py` resolves the VirusTotal key from the `VT_API_KEY` environment variable, then the OS keychain (`keyring`), then `QSettings`; `save_key()` writes to the OS keychain (encrypted at rest) or `QSettings` (plaintext) and removes the copy from the other backend. A "Store key in OS keychain (encrypted at rest)" checkbox opts in when `keyring` is available (`keystore.py`, `main.py`)
+- **`.env` support** — `_load_dotenv()` loads `VT_API_KEY` (and other `KEY=VALUE` lines) from a `.env` file next to the app at startup, so the key can live in a git-ignored file instead of the GUI; environment variables take precedence (`main.py`)
+- **"Latest build date" label** in the header showing the executable's (or source file's) modification time as `MM/DD/YYYY HH:MM:SS` (`main.py`)
+- `HashHarvest.spec` PyInstaller build file with UPX compression, Qt/stdlib exclusions, and `vt` / `keyring.backends.Windows` declared as hidden imports so packaged builds include the optional features (`HashHarvest.spec`)
+
+### Changed
+- Version bumped to **v0.8.0** in the GUI version label and window title (`main.py`)
+- `requirements.txt` — added `vt-py`, plus optional `keyring` for encrypted key storage
+- `README.md` and `USAGE.md` — documented the two scan modes, VirusTotal lookup, API-key configuration (env var / `.env` / GUI field) and plaintext-vs-encrypted storage, and rewrote the build section for the spec + UPX workflow with shipping guidance (ship only the `.exe`; the empty database is created on first run)
+
+### Removed
+- Calendar date label ("Month D, YYYY") from the header, replaced by the build-date label (`main.py`)
+
 ## [06-23-2026 18:12:53]
 
 ### Changed

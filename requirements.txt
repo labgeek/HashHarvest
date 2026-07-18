@@ -3,4 +3,4 @@ PyQt5
 vt-py
 # Optional: encrypted at-rest storage of the VirusTotal key in the OS keychain.
 # Uncomment (or `pip install keyring`) to enable the "Store key in OS keychain" option.
-# keyring
+keyring
