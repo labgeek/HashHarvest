@@ -9,5 +9,6 @@ testFiles/
 tests/
 .env
 requirements-dev.txt
-test*
 onfile/
+test_hash_files.py
+test_keystore.py
