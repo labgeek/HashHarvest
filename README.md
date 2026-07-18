@@ -1,10 +1,14 @@
 # HashHarvest
 
+<<<<<<< HEAD
 Author: labgeek@gmail.com
 
 `HashHarvest` (v0.8.0) is a PyQt5 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, Markdown, and Microsoft Office files (Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`) — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs with the line number and surrounding context for each hit, and can be filtered in real time, right-click copied, exported to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Watchlist lets you import known-bad hash lists and instantly highlights any matches red after each scan. A Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
 
 HashHarvest has **two scan modes**: *Find hashes in text* (the default — detect hash-shaped strings inside document text) and *Hash the files* (compute each file's own MD5/SHA1/SHA256/SHA512 digest). Whichever mode you use, the resulting hashes can be checked against **VirusTotal** from inside the app for a malicious / suspicious / clean verdict.
+=======
+`HashHarvest` (v0.7.0) is a PyQt5 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, Markdown, and Microsoft Office files (Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`) — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs with the line number and surrounding context for each hit, and can be filtered in real time, right-click copied, exported to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Watchlist lets you import known-bad hash lists and instantly highlights any matches red after each scan. A Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
+>>>>>>> bb0859027c2a707a41e3531c94fa405f0dc38ec2
 
 <img width="1907" height="990" alt="image" src="https://github.com/user-attachments/assets/0f9487ef-8407-4cfa-bcbd-adf21aa28d89" />
 
