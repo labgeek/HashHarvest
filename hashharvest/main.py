@@ -11,7 +11,7 @@ from hashharvest.persistence.db import HashDatabase
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
-from hashharvest.extractor import HashHarvest, hash_files
+from hashharvest.extractor import HashHarvest, hash_files, csv_safe
 from hashharvest import keystore
 
 
@@ -89,8 +89,12 @@ class VTLookupWorker(QObject):
                 self.progress_updated.emit, self.result_found.emit,
             )
             self.finished.emit()
-        except ImportError:
-            self.failed.emit("The 'vt-py' package is not installed. Run: pip install vt-py")
+        except ModuleNotFoundError as error:
+            if error.name == 'vt':
+                self.failed.emit("The 'vt-py' package is not installed. Run: pip install vt-py")
+            else:
+                # A dependency is missing (e.g. not bundled in the build) — name it.
+                self.failed.emit("Missing module: %s — %s" % (error.name, error))
         except Exception as error:
             self.failed.emit(str(error))
 
@@ -612,7 +616,8 @@ class pdfAnalysis(QDialog):
                 writer.writerow(['Absolute_Path', 'Hash_Type', 'Hash_Value', 'Line', 'Context'])
                 for file_path, hashes in sorted(self.scan_results.items()):
                     for hash_type, hash_value, line_no, context in sorted(hashes):
-                        writer.writerow([file_path, hash_type, hash_value, line_no, context])
+                        writer.writerow([csv_safe(file_path), hash_type, hash_value,
+                                         line_no, csv_safe(context)])
             self.status_label.setText("Exported CSV: %s" % path)
             QMessageBox.information(self, "Export Complete", "CSV saved to:\n%s" % path)
         except Exception as error:

@@ -7,6 +7,18 @@ import re
 from hashharvest.readers import read_file_chunks, SUPPORTED_EXTENSIONS
 
 
+def csv_safe(value):
+    """Neutralize spreadsheet formula injection (CWE-1236) in a CSV field.
+
+    Excel/LibreOffice treat cells starting with = + - @ (or tab/CR) as formulas.
+    Scanned-file content and filenames are untrusted, so prefix a single quote.
+    """
+    value = str(value)
+    if value.startswith(('=', '+', '-', '@', '\t', '\r')):
+        return "'" + value
+    return value
+
+
 # Constructors for the file-digest mode, keyed by the same names the GUI uses.
 _HASHLIB_ALGOS = {
     'MD5': hashlib.md5,
@@ -174,7 +186,8 @@ class HashHarvest:
             writer.writerow(['Absolute_Path', 'Hash_Type', 'Hash_Value', 'Line', 'Context'])
             for file_path, hashes in sorted(self.results.items()):
                 for hash_type, hash_value, line_no, context in sorted(hashes):
-                    writer.writerow([file_path, hash_type, hash_value, line_no, context])
+                    writer.writerow([csv_safe(file_path), hash_type, hash_value,
+                                     line_no, csv_safe(context)])
 
     def export_json(self, path):
         """Write results to a JSON file at the given path."""

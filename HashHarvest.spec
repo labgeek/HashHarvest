@@ -11,6 +11,9 @@ a = Analysis(
         'PyQt5.sip',
         'vt',                          # VirusTotal lookup — lazily imported, so declare it
         'keyring.backends.Windows',    # keychain storage backend (Windows Credential Manager)
+        'win32ctypes.pywin32',         # provides pywintypes/win32cred for keyring's backend
+        'win32ctypes.pywin32.pywintypes',
+        'win32ctypes.pywin32.win32cred',
     ],
     hookspath=['scripts/pyi_hooks'],
     hooksconfig={},
@@ -61,7 +64,7 @@ a = Analysis(
         'doctest',
         'difflib',
         'distutils',
-        'email',
+        # NOTE: do not exclude 'email' — http.client and aiohttp (vt-py) need it.
         'ftplib',
         'imaplib',
         'mailbox',
