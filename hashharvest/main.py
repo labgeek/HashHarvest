@@ -11,7 +11,8 @@ from hashharvest.persistence.db import HashDatabase
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
-from hashharvest.extractor import HashHarvest
+from hashharvest.extractor import HashHarvest, hash_files
+from hashharvest import keystore
 
 
 class ScanWorker(QObject):
@@ -23,25 +24,75 @@ class ScanWorker(QObject):
     scan_finished = pyqtSignal(dict, int)
     scan_failed = pyqtSignal(str)
 
-    def __init__(self, directory, hash_types=None):
-        """Create a worker for the selected input directory."""
+    def __init__(self, directory, hash_types=None, mode="text"):
+        """Create a worker for the selected input directory.
+
+        Args:
+            directory: Directory to scan.
+            hash_types: Optional set of algorithm names to use.
+            mode: ``"text"`` to extract hash-shaped strings from document text,
+                or ``"file"`` to compute each file's own digest.
+        """
         QObject.__init__(self)
         self.directory = directory
         self.hash_types = hash_types
+        self.mode = mode
 
     def run(self):
         """Execute extraction and emit completion or failure signals."""
         try:
-            extractor = HashHarvest(self.directory)
-            results = extractor.extract(
-                self.progress_updated.emit,
-                self.status_updated.emit,
-                self.result_found.emit,
-                hash_types=self.hash_types,
-            )
-            self.scan_finished.emit(results, len(extractor.errors))
+            if self.mode == "file":
+                results, errors = hash_files(
+                    self.directory,
+                    self.progress_updated.emit,
+                    self.status_updated.emit,
+                    self.result_found.emit,
+                    hash_types=self.hash_types,
+                )
+                self.scan_finished.emit(results, len(errors))
+            else:
+                extractor = HashHarvest(self.directory)
+                results = extractor.extract(
+                    self.progress_updated.emit,
+                    self.status_updated.emit,
+                    self.result_found.emit,
+                    hash_types=self.hash_types,
+                )
+                self.scan_finished.emit(results, len(extractor.errors))
         except Exception as error:
             self.scan_failed.emit(str(error))
+
+
+class VTLookupWorker(QObject):
+    """Run VirusTotal hash lookups in a worker thread and emit GUI-safe signals."""
+
+    progress_updated = pyqtSignal(int)
+    result_found = pyqtSignal(str, str, str)  # hash, verdict, detail
+    finished = pyqtSignal()
+    failed = pyqtSignal(str)
+
+    def __init__(self, api_key, hashes):
+        """Create a worker for the given API key and list of hash strings."""
+        QObject.__init__(self)
+        self.api_key = api_key
+        self.hashes = hashes
+
+    def run(self):
+        """Execute the lookups and emit completion or failure signals."""
+        try:
+            import asyncio
+            # ponytail: vt-py drives asyncio; give this worker thread its own loop.
+            asyncio.set_event_loop(asyncio.new_event_loop())
+            from hashharvest.vt_lookup import lookup_hashes
+            lookup_hashes(
+                self.api_key, self.hashes,
+                self.progress_updated.emit, self.result_found.emit,
+            )
+            self.finished.emit()
+        except ImportError:
+            self.failed.emit("The 'vt-py' package is not installed. Run: pip install vt-py")
+        except Exception as error:
+            self.failed.emit(str(error))
 
 
 class pdfAnalysis(QDialog):
@@ -78,6 +129,12 @@ class pdfAnalysis(QDialog):
         summary_group = QGroupBox("Scan Summary")
 
         self.dir = QLineEdit()
+        self.mode_text = QRadioButton("Find hashes in text")
+        self.mode_file = QRadioButton("Hash the files")
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.addButton(self.mode_text)
+        self.mode_group.addButton(self.mode_file)
+        self.mode_text.setChecked(True)
         self.chk_md5 = QCheckBox("MD5")
         self.chk_sha1 = QCheckBox("SHA1")
         self.chk_sha256 = QCheckBox("SHA256")
@@ -86,8 +143,11 @@ class pdfAnalysis(QDialog):
         self.status_label = QLabel("Ready")
         self.title_label = QLabel("HashHarvest")
         self.subtitle_label = QLabel("Multi-Algorithm File Hash Analysis")
-        self.version_label = QLabel("v0.7.0")
-        self.date_label = QLabel(QDate.currentDate().toString("MMMM d, yyyy"))
+        self.version_label = QLabel("v0.8.0")
+        # "Build date" = mtime of the executable when frozen, else this source file.
+        _build_src = sys.executable if getattr(sys, 'frozen', False) else __file__
+        _build_dt = datetime.fromtimestamp(os.path.getmtime(_build_src))
+        self.build_label = QLabel("Latest build date: %s" % _build_dt.strftime("%m/%d/%Y %H:%M:%S"))
         self.pdfs_scanned = QLabel("0")
         self.hashes_found = QLabel("0")
         self.skipped_files = QLabel("0")
@@ -102,6 +162,7 @@ class pdfAnalysis(QDialog):
         self.export_json_btn = QPushButton("Export JSON")
         self.scan_history_btn = QPushButton("Scan History")
         self.watchlist_btn = QPushButton("Watchlist")
+        self.vt_btn = QPushButton("VirusTotal")
 
         self.dir.setPlaceholderText("Select the directory containing files to scan")
         for chk in (self.chk_md5, self.chk_sha1, self.chk_sha256, self.chk_sha512):
@@ -112,8 +173,8 @@ class pdfAnalysis(QDialog):
         self.subtitle_label.setStyleSheet("font-size: 11px; color: #6c757d;")
         self.version_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)
         self.version_label.setStyleSheet("font-size: 12px; font-weight: bold; color: #6c757d;")
-        self.date_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
-        self.date_label.setStyleSheet("font-size: 10px; color: #6c757d;")
+        self.build_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
+        self.build_label.setStyleSheet("font-size: 10px; color: #6c757d;")
         self.export_csv_btn.setEnabled(False)
         self.export_json_btn.setEnabled(False)
 
@@ -149,6 +210,7 @@ class pdfAnalysis(QDialog):
         button_layout.addWidget(self.clear)
         button_layout.addWidget(self.scan_history_btn)
         button_layout.addWidget(self.watchlist_btn)
+        button_layout.addWidget(self.vt_btn)
         button_layout.addStretch()
 
         export_layout.addWidget(self.export_csv_btn)
@@ -163,7 +225,14 @@ class pdfAnalysis(QDialog):
         hash_layout.addWidget(self.chk_sha512)
         hash_layout.addStretch()
 
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("Scan Mode"))
+        mode_layout.addWidget(self.mode_text)
+        mode_layout.addWidget(self.mode_file)
+        mode_layout.addStretch()
+
         config_layout.addLayout(pdf_layout)
+        config_layout.addLayout(mode_layout)
         config_layout.addLayout(hash_layout)
         config_layout.addWidget(QLabel("Progress"))
         config_layout.addWidget(self.progress)
@@ -202,7 +271,7 @@ class pdfAnalysis(QDialog):
         header_right = QVBoxLayout()
         header_right.setSpacing(2)
         header_right.addWidget(self.version_label)
-        header_right.addWidget(self.date_label)
+        header_right.addWidget(self.build_label)
 
         header_row = QHBoxLayout()
         header_row.addLayout(header_left)
@@ -221,7 +290,7 @@ class pdfAnalysis(QDialog):
 
         self.setLayout(main_layout)
         self.setGeometry(200, 200, 1050, 400)
-        self.setWindowTitle("HashHarvest v0.7.0 (labgeek)")
+        self.setWindowTitle("HashHarvest v0.8.0 (labgeek)")
         self.setFocus()
 
         self.execute.clicked.connect(self.search)
@@ -234,6 +303,7 @@ class pdfAnalysis(QDialog):
         self.results_table.customContextMenuRequested.connect(self._show_results_context_menu)
         self.show_context_chk.toggled.connect(self._toggle_context_columns)
         self.watchlist_btn.clicked.connect(self.open_watchlist_manager)
+        self.vt_btn.clicked.connect(self.open_virustotal)
 
         if getattr(sys, 'frozen', False):
             _db_path = os.path.join(os.path.dirname(sys.executable), "hashharvest.db")
@@ -254,6 +324,7 @@ class pdfAnalysis(QDialog):
     def clear_fields(self):
         """Clear selected paths, scan results, progress, and status text."""
         self.dir.clear()
+        self.mode_text.setChecked(True)
         for chk in (self.chk_md5, self.chk_sha1, self.chk_sha256, self.chk_sha512):
             chk.setChecked(True)
         self.reset_scan_output()
@@ -278,6 +349,8 @@ class pdfAnalysis(QDialog):
         self.clear.setEnabled(enabled)
         self.browse_pdf.setEnabled(enabled)
         self.dir.setEnabled(enabled)
+        self.mode_text.setEnabled(enabled)
+        self.mode_file.setEnabled(enabled)
         for chk in (self.chk_md5, self.chk_sha1, self.chk_sha256, self.chk_sha512):
             chk.setEnabled(enabled)
 
@@ -331,8 +404,10 @@ class pdfAnalysis(QDialog):
         self.status_label.setText("Scanning files...")
         self.set_controls_enabled(False)
 
+        mode = "file" if self.mode_file.isChecked() else "text"
+
         self.scan_thread = QThread()
-        self.scan_worker = ScanWorker(directory, hash_types)
+        self.scan_worker = ScanWorker(directory, hash_types, mode)
         self.scan_worker.moveToThread(self.scan_thread)
 
         self.scan_thread.started.connect(self.scan_worker.run)
@@ -439,6 +514,21 @@ class pdfAnalysis(QDialog):
         """Open the Watchlist Manager dialog."""
         dialog = WatchlistDialog(self.db, self)
         dialog.exec_()
+
+    def open_virustotal(self):
+        """Open the VirusTotal lookup dialog for the current scan's unique hashes."""
+        hashes = {
+            hash_value
+            for hashes in self.scan_results.values()
+            for (_hash_type, hash_value, _line, _ctx) in hashes
+        }
+        if not hashes:
+            QMessageBox.information(
+                self, "VirusTotal",
+                "Run a scan first — there are no hashes to look up."
+            )
+            return
+        VirusTotalDialog(hashes, self).exec_()
 
     def _apply_watchlist_highlights(self, scan_id):
         """Highlight rows red where the hash value matches any watchlist entry."""
@@ -859,7 +949,204 @@ class WatchlistDialog(QDialog):
         return {m.group(1).lower() for m in cls._HASH_RE.finditer(text)}
 
 
+class VirusTotalDialog(QDialog):
+    """Look up the current scan's hashes against VirusTotal.
+
+    The API key is read via :mod:`hashharvest.keystore` — the ``VT_API_KEY``
+    environment variable, then the OS keychain, then QSettings. Entered keys are
+    saved for next time, either in the OS keychain (encrypted, when the "Store
+    key in OS keychain" box is checked) or in QSettings (plaintext). This dialog
+    is self-contained: it does not modify the results table, database, or exports.
+    """
+
+    VERDICT_COLORS = {
+        "malicious":  QColor(220, 80, 80),
+        "suspicious": QColor(230, 160, 60),
+        "clean":      QColor(80, 170, 90),
+    }
+
+    def __init__(self, hashes, parent=None):
+        """Build the dialog for the given set of hash strings."""
+        QDialog.__init__(self, parent)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setWindowTitle("VirusTotal Lookup")
+        self.setGeometry(260, 260, 720, 460)
+
+        self._hashes = sorted({h.lower() for h in hashes})
+        self._row_for_hash = {}
+        self._thread = None
+        self._worker = None
+        self._env_key = os.environ.get("VT_API_KEY")
+
+        layout = QVBoxLayout()
+
+        key_row = QHBoxLayout()
+        self.api_edit = QLineEdit(keystore.load_key())
+        self.api_edit.setEchoMode(QLineEdit.Password)
+        self.api_edit.setPlaceholderText("Paste your VirusTotal API key")
+        key_row.addWidget(QLabel("API Key"))
+        key_row.addWidget(self.api_edit, 1)
+        key_link = QLabel('<a href="https://www.virustotal.com/gui/my-apikey">Get a key</a>')
+        key_link.setOpenExternalLinks(True)
+        key_row.addWidget(key_link)
+        if self._env_key:
+            self.api_edit.setEnabled(False)
+            key_row.addWidget(QLabel("(from VT_API_KEY)"))
+
+        # Opt-in encrypted-at-rest storage via the OS keychain (needs `keyring`).
+        self.secure_chk = QCheckBox("Store key in OS keychain (encrypted at rest)")
+        if self._env_key:
+            self.secure_chk.setEnabled(False)
+            self.secure_chk.setToolTip("The key comes from VT_API_KEY; nothing is saved.")
+        elif keystore.keychain_available():
+            self.secure_chk.setChecked(keystore.key_in_keychain())
+        else:
+            self.secure_chk.setEnabled(False)
+            self.secure_chk.setToolTip(
+                "Install the 'keyring' package for encrypted storage:\npip install keyring"
+            )
+
+        control_row = QHBoxLayout()
+        self.lookup_btn = QPushButton(
+            "Look Up %d Hash%s" % (len(self._hashes), "es" if len(self._hashes) != 1 else "")
+        )
+        self.progress = QProgressBar()
+        self.progress.setValue(0)
+        self.progress.setAlignment(Qt.AlignCenter)
+        control_row.addWidget(self.lookup_btn)
+        control_row.addWidget(self.progress, 1)
+
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["Hash", "Verdict", "Detections"])
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        vt_header = self.table.horizontalHeader()
+        vt_header.setSectionResizeMode(0, QHeaderView.Stretch)
+        vt_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        vt_header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        for digest in self._hashes:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            self.table.setItem(row, 0, QTableWidgetItem(digest))
+            self.table.setItem(row, 1, QTableWidgetItem("—"))
+            self.table.setItem(row, 2, QTableWidgetItem(""))
+            self._row_for_hash[digest] = row
+
+        close_row = QHBoxLayout()
+        close_row.addStretch()
+        self.close_btn = QPushButton("Close")
+        close_row.addWidget(self.close_btn)
+
+        layout.addLayout(key_row)
+        layout.addWidget(self.secure_chk)
+        layout.addLayout(control_row)
+        layout.addWidget(self.table)
+        layout.addLayout(close_row)
+        self.setLayout(layout)
+
+        self.lookup_btn.clicked.connect(self._start_lookup)
+        self.close_btn.clicked.connect(self.close)
+
+    def _start_lookup(self):
+        """Validate the key, persist it, and start the lookup worker thread."""
+        api_key = self.api_edit.text().strip()
+        if not api_key:
+            QMessageBox.warning(self, "VirusTotal", "Enter your VirusTotal API key.")
+            return
+        if not self._env_key:
+            try:
+                keystore.save_key(api_key, secure=self.secure_chk.isChecked())
+            except Exception as error:
+                QMessageBox.warning(
+                    self, "VirusTotal",
+                    "Could not save the key: %s\nUsing it for this session only." % error
+                )
+
+        self.lookup_btn.setEnabled(False)
+        self.api_edit.setEnabled(False)
+        self.progress.setValue(0)
+
+        self._thread = QThread()
+        self._worker = VTLookupWorker(api_key, self._hashes)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.progress_updated.connect(self.progress.setValue)
+        self._worker.result_found.connect(self._apply_result)
+        self._worker.finished.connect(self._lookup_done)
+        self._worker.failed.connect(self._lookup_failed)
+        self._worker.finished.connect(self._thread.quit)
+        self._worker.failed.connect(self._thread.quit)
+        self._thread.finished.connect(self._worker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.finished.connect(self._clear_thread)
+        self._thread.start()
+
+    def _apply_result(self, digest, verdict, detail):
+        """Update one table row with a lookup verdict and color it."""
+        row = self._row_for_hash.get(digest)
+        if row is None:
+            return
+        self.table.item(row, 1).setText(verdict)
+        self.table.item(row, 2).setText(detail)
+        color = self.VERDICT_COLORS.get(verdict)
+        if color:
+            for col in range(self.table.columnCount()):
+                cell = self.table.item(row, col)
+                cell.setForeground(QColor(255, 255, 255))
+                cell.setBackground(color)
+
+    def _lookup_done(self):
+        """Re-enable controls after a successful lookup run."""
+        self.lookup_btn.setEnabled(True)
+        if not self._env_key:
+            self.api_edit.setEnabled(True)
+
+    def _lookup_failed(self, message):
+        """Re-enable controls and report a lookup failure."""
+        self.lookup_btn.setEnabled(True)
+        if not self._env_key:
+            self.api_edit.setEnabled(True)
+        QMessageBox.critical(self, "VirusTotal Error", message)
+
+    def _clear_thread(self):
+        """Drop worker/thread references once the thread has finished."""
+        self._thread = None
+        self._worker = None
+
+    def closeEvent(self, event):
+        """Stop any running lookup thread before closing."""
+        if self._thread is not None and self._thread.isRunning():
+            self._thread.quit()
+            self._thread.wait()
+        event.accept()
+
+
+def _load_dotenv():
+    """Load ``KEY=VALUE`` lines from a ``.env`` file next to the app into the
+    environment, so ``VT_API_KEY`` can live in a file instead of QSettings.
+
+    Real environment variables always win (``setdefault``). Next to the frozen
+    executable when packaged, else the project root.
+    """
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(base, ".env")
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
 if __name__ == "__main__":
+    _load_dotenv()
     app = QApplication(sys.argv)
     p = pdfAnalysis()
     p.show()

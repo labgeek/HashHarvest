@@ -5,8 +5,9 @@ build/
 *.db
 docs/
 scripts/
-HashHarvest.spec
 testFiles/
 tests/
 .env
 requirements-dev.txt
+test*
+onfile/

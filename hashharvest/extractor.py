@@ -1,9 +1,81 @@
 import csv
+import hashlib
 import json
 import os
 import re
 
 from hashharvest.readers import read_file_chunks, SUPPORTED_EXTENSIONS
+
+
+# Constructors for the file-digest mode, keyed by the same names the GUI uses.
+_HASHLIB_ALGOS = {
+    'MD5': hashlib.md5,
+    'SHA1': hashlib.sha1,
+    'SHA256': hashlib.sha256,
+    'SHA512': hashlib.sha512,
+}
+
+
+def hash_files(directory, progress_callback=None, status_callback=None,
+               result_callback=None, hash_types=None):
+    """Digest every file under ``directory`` with the selected algorithms.
+
+    Unlike :meth:`HashHarvest.extract`, this walks *all* files (not just
+    supported document types) and computes each file's own hash rather than
+    scanning its text for hash-shaped strings.
+
+    Args:
+        progress_callback: Optional callable receiving an integer percentage.
+        status_callback: Optional callable receiving skipped-file messages.
+        result_callback: Optional callable receiving
+            ``(file_path, file_type, hash_type, hash_value, line_no, context)``.
+        hash_types: Optional set of algorithm names (e.g. ``{'MD5', 'SHA256'}``).
+            Defaults to all algorithms when ``None``.
+
+    Returns:
+        A ``(results, errors)`` tuple. ``results`` maps each file path to a set of
+        ``(hash_type, hash_value, None, "file digest")`` tuples — the same shape
+        :meth:`HashHarvest.extract` returns, with a null line number. ``errors`` is
+        a list of ``(path, message)`` tuples for files that could not be read.
+    """
+    algos = [
+        (name, ctor) for name, ctor in _HASHLIB_ALGOS.items()
+        if hash_types is None or name in hash_types
+    ]
+    paths = sorted(
+        os.path.join(root, filename)
+        for root, _, files in os.walk(directory)
+        for filename in files
+    )
+    total = len(paths)
+    results = {}
+    errors = []
+
+    for count, path in enumerate(paths, start=1):
+        try:
+            digests = {name: ctor() for name, ctor in algos}
+            with open(path, "rb") as fh:
+                for block in iter(lambda: fh.read(1 << 16), b""):
+                    for digest in digests.values():
+                        digest.update(block)
+        except Exception as error:
+            errors.append((path, str(error)))
+            if status_callback is not None:
+                status_callback("Skipped %s: %s" % (path, error))
+        else:
+            results[path] = {
+                (name, digest.hexdigest(), None, "file digest")
+                for name, digest in digests.items()
+            }
+            if result_callback is not None:
+                file_type = os.path.splitext(path)[1].lstrip('.').upper() or "FILE"
+                for hash_type, hash_value, line_no, context in sorted(results[path]):
+                    result_callback(path, file_type, hash_type, hash_value, line_no, context)
+
+        if progress_callback is not None and total > 0:
+            progress_callback(int(count * 100 / total))
+
+    return results, errors
 
 
 class HashHarvest:

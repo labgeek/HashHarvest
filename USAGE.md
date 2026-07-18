@@ -1,6 +1,6 @@
 # HashHarvest — Usage Guide
 
-HashHarvest (v0.7.0) is a desktop GUI tool for extracting cryptographic hashes (MD5, SHA1, SHA256, SHA512) from files. It is designed for incident response, forensics, and threat intelligence workflows where you need to find, triage, and export hash evidence quickly.
+HashHarvest (v0.8.0) is a desktop GUI tool for working with cryptographic hashes (MD5, SHA1, SHA256, SHA512). It can either **find hashes written inside files** or **compute each file's own digest**, then triage the results — including a **VirusTotal** reputation check — and export them. It is designed for incident response, forensics, and threat intelligence workflows.
 
 ---
 
@@ -11,8 +11,9 @@ HashHarvest (v0.7.0) is a desktop GUI tool for extracting cryptographic hashes (
 3. [Running a Scan](#running-a-scan)
 4. [Results Table](#results-table)
 5. [Watchlist](#watchlist)
-6. [Scan History](#scan-history)
-7. [Exporting Results](#exporting-results)
+6. [VirusTotal Lookup](#virustotal-lookup)
+7. [Scan History](#scan-history)
+8. [Exporting Results](#exporting-results)
 
 ---
 
@@ -47,20 +48,34 @@ Download the latest `HashHarvest.exe` from the [Releases](https://github.com/lab
 
 ### Build from Source
 
-Requires PyInstaller:
+The build is driven by the included `HashHarvest.spec` (one-file, windowed, UPX-compressed, with the optional `vt` and `keyring` dependencies declared as hidden imports so the VirusTotal and keychain features work in the packaged app).
 
-```bash
+```powershell
 pip install pyinstaller
-python -m PyInstaller --clean --onefile --windowed --name HashHarvest --hidden-import PyQt5.sip hashharvest/main.py
+python -m PyInstaller --clean --upx-dir "C:\path\to\upx" HashHarvest.spec
 ```
 
 The executable is written to `dist\HashHarvest.exe`.
+
+- **UPX** compression is enabled in the spec — point PyInstaller at your UPX folder with `--upx-dir`, or add it to `PATH` and omit the flag.
+- When building from the `.spec`, command-line packaging flags (`--onefile`, `--windowed`, `--name`, `--hidden-import`) are ignored; those live in the spec. Only build-time flags like `--clean` and `--upx-dir` apply.
 
 ### Launch
 
 Double-click `HashHarvest.exe` — no Python installation required.
 
-> The `hashharvest.db` scan database is created in the same folder as the executable on first run.
+> The `hashharvest.db` scan database is created (empty) in the same folder as the executable on first run.
+
+### Shipping the Executable
+
+Ship **only `HashHarvest.exe`** — it is self-contained. Do **not** include:
+
+- **`hashharvest.db`** — it isn't needed (the app creates a fresh empty one on first run), and shipping your own copy would expose your scan history.
+- **`.env`** — it holds your VirusTotal API key. Each user provides their own key.
+
+Run the executable from a writable location (your own folder, Desktop, Downloads), since it writes `hashharvest.db` beside itself.
+
+> **Tip:** after building, test the packaged `.exe` itself — run a scan, do a **VirusTotal** lookup, and confirm the **"Store key in OS keychain"** option is available. These verify the bundled optional dependencies.
 
 ---
 
@@ -74,17 +89,24 @@ Click **Select Input Folder** and choose the directory containing the files you 
 
 > Microsoft Office files (`.docx`, `.xlsx`, `.pptx`) are parsed directly from their OpenXML contents — no Office installation or extra libraries required. Text split across runs within a paragraph or cell is reassembled before matching. Word reads the document body; Excel reads string cells across all worksheets; PowerPoint reads slide text.
 
-### 2. Choose Hash Types
+### 2. Choose a Scan Mode
+
+Pick one of the two **Scan Mode** radio buttons:
+
+- **Find hashes in text** (default) — scans the *text content* of supported document types for hash-shaped strings. Use this to pull hashes (IOCs) out of reports, logs, and threat-intel files. Only the supported file types listed above are read.
+- **Hash the files** — computes each file's own MD5/SHA1/SHA256/SHA512 digest. This walks **every** file under the folder, not just the supported document types, so you can fingerprint a directory of samples or evidence.
+
+### 3. Choose Hash Types
 
 Check or uncheck **MD5**, **SHA1**, **SHA256**, and **SHA512** to control which algorithms to scan for. All four are selected by default. Deselect algorithms you don't need to speed up large scans.
 
-### 3. Run the Scan
+### 4. Run the Scan
 
 Click **Start Scan**. The progress bar updates as each file is processed. Files that cannot be read are skipped and counted under **Skipped Files** — the scan always continues to completion.
 
 Results appear in the table as they are found, in real time.
 
-### 4. Clear and Re-scan
+### 5. Clear and Re-scan
 
 Click **Clear Form** to reset all fields, results, progress, and summary counts before starting a new scan.
 
@@ -155,6 +177,66 @@ After every scan completes, all extracted hashes are joined against all watchlis
 ### Deleting a Watchlist
 
 Select it and click **Delete Selected**. A confirmation prompt will appear. Deletion removes the watchlist and all of its entries and cannot be undone.
+
+---
+
+## VirusTotal Lookup
+
+The Watchlist checks hashes against *your own* known-bad lists. The **VirusTotal** button checks them against VirusTotal's global reputation database instead.
+
+### Setting Up an API Key
+
+You need a free VirusTotal API key — sign in at <https://www.virustotal.com/gui/my-apikey> and copy your key. HashHarvest looks for the key in three places, in order:
+
+1. **`VT_API_KEY` environment variable.** If set, the dialog's key field is pre-filled and locked.
+
+   ```powershell
+   $env:VT_API_KEY = "your-key-here"; python -m hashharvest.main
+   ```
+
+2. **A `.env` file** next to the app (project root, or beside `HashHarvest.exe` when packaged). Copy the provided `.env.example` to `.env` and fill in your key:
+
+   ```
+   VT_API_KEY=your-key-here
+   ```
+
+   The `.env` file is git-ignored, so your key is never committed.
+
+3. **The dialog's API Key field.** Paste the key once and it is saved for next time — you won't need to re-enter it.
+
+You only need **one** of these. The first two keep your key out of the GUI entirely.
+
+#### Plaintext vs. encrypted storage (dialog field)
+
+When you save a key from the field, the **"Store key in OS keychain (encrypted at rest)"** checkbox controls where it goes:
+
+- **Unchecked (default):** saved via `QSettings` (Windows registry / plist / ini) as **plaintext**. Fine for a free key — it's low-value, rate-limited, and revocable.
+- **Checked:** saved to the **OS keychain** (Windows Credential Manager / macOS Keychain / Linux Secret Service), **encrypted at rest** and tied to your login. Requires `pip install keyring`; if it isn't installed the box is disabled with a hint.
+
+Recommended if you use a **premium key** or a **shared machine**. Switching the box moves the key and removes the copy from the other store, so it's never in both. A key from `VT_API_KEY` or `.env` is never written to either store.
+
+### Running a Lookup
+
+1. Run a scan (either mode) so the results table has hashes.
+2. Click **VirusTotal**.
+3. Confirm the API key is present (or paste it), then click **Look Up N Hashes**.
+
+Each unique hash is queried and given a verdict:
+
+| Verdict | Meaning | Row color |
+|---------|---------|-----------|
+| `malicious` | One or more engines flag it as malicious | Red |
+| `suspicious` | Flagged suspicious but not malicious | Amber |
+| `clean` | Known to VirusTotal with no detections | Green |
+| `not found` | VirusTotal has no record of this hash | (none) |
+| `n/a` | SHA512 — VirusTotal doesn't index it, so it's skipped | (none) |
+| `error` | Lookup failed; the reason (e.g. rate limit) is shown | (none) |
+
+> VirusTotal identifies files by **MD5, SHA1, and SHA256** only — SHA512 hashes are skipped automatically and never use an API call.
+
+> **Rate limits:** free API keys allow about **4 lookups per minute** and 500 per day. Larger batches will start returning `error: QuotaExceededError` — look up a handful at a time, or use a premium key.
+
+> The lookup feature requires the `vt-py` package (installed by `pip install -r requirements.txt`). If it's missing, the dialog tells you to run `pip install vt-py`. The lookup dialog does not change the results table, database, or exports.
 
 ---
 

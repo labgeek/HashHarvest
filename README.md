@@ -2,7 +2,9 @@
 
 Author: labgeek@gmail.com
 
-`HashHarvest` (v0.7.0) is a PyQt5 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, Markdown, and Microsoft Office files (Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`) — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs with the line number and surrounding context for each hit, and can be filtered in real time, right-click copied, exported to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Watchlist lets you import known-bad hash lists and instantly highlights any matches red after each scan. A Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
+`HashHarvest` (v0.8.0) is a PyQt5 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, Markdown, and Microsoft Office files (Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`) — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs with the line number and surrounding context for each hit, and can be filtered in real time, right-click copied, exported to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Watchlist lets you import known-bad hash lists and instantly highlights any matches red after each scan. A Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
+
+HashHarvest has **two scan modes**: *Find hashes in text* (the default — detect hash-shaped strings inside document text) and *Hash the files* (compute each file's own MD5/SHA1/SHA256/SHA512 digest). Whichever mode you use, the resulting hashes can be checked against **VirusTotal** from inside the app for a malicious / suspicious / clean verdict.
 
 <img width="1907" height="990" alt="image" src="https://github.com/user-attachments/assets/0f9487ef-8407-4cfa-bcbd-adf21aa28d89" />
 
@@ -41,6 +43,8 @@ The Office formats (`.docx`, `.xlsx`, `.pptx`) are read directly from their unde
 ## Features
 
 - Detects MD5, SHA1, SHA256, and SHA512 hashes across all supported file types in a single scan.
+- **Two scan modes** — *Find hashes in text* (detect hash strings inside documents) or *Hash the files* (compute each file's own digest). File-digest mode walks **all** files under the folder, not just the supported document types, and reports one row per file per selected algorithm.
+- **VirusTotal lookup** — after a scan, check the results' unique hashes against VirusTotal and see a malicious / suspicious / clean verdict with detection counts, color-coded in a dialog. MD5, SHA1, and SHA256 are looked up; SHA512 is labeled n/a because VirusTotal does not index it.
 - Recursive directory search — all supported files under the selected folder are included.
 - Threaded extraction keeps the GUI responsive during long scans.
 - **Results table** with six columns: **Source File**, **File Type**, **Hash Type**, **Hash Value**, **Line**, and **Context**.
@@ -70,6 +74,8 @@ The Office formats (`.docx`, `.xlsx`, `.pptx`) are read directly from their unde
 - Python 3
 - `pypdf`
 - `PyQt5`
+- `vt-py` — only needed for the VirusTotal lookup feature. The app runs without it; you are prompted to `pip install vt-py` only if you use a lookup.
+- `keyring` *(optional)* — only needed to store the VirusTotal key encrypted in the OS keychain. Without it, the key is saved as plaintext via `QSettings`.
 
 Office (`.docx`/`.xlsx`/`.pptx`) parsing uses only the Python standard library, so it adds no runtime dependencies.
 
@@ -94,11 +100,13 @@ python -m hashharvest.main
 |---------|-------------|
 | **Input Directory** field | Type or browse to the folder containing files to scan. |
 | **Select Input Folder** | Opens a folder picker for the input directory. |
+| **Scan Mode** | *Find hashes in text* scans document text for hash-shaped strings; *Hash the files* computes each file's own digest. |
 | **Hash Types** checkboxes | Choose which algorithms to scan for (MD5, SHA1, SHA256, SHA512). All checked by default. |
 | **Start Scan** | Validates the input directory and begins the threaded scan. |
 | **Clear Form** | Resets all fields, the results table, the progress bar, and summary counts. |
 | **Scan History** | Opens the Scan History dialog to browse and reload past scans. |
 | **Watchlist** | Opens the Watchlist Manager to create watchlists and import known-bad hashes. |
+| **VirusTotal** | Opens the VirusTotal Lookup dialog to check the current results' hashes against VirusTotal. |
 | **Export CSV** | Opens a save dialog and writes the current results to a CSV file. Enabled after a successful scan or after loading history. |
 | **Export JSON** | Opens a save dialog and writes the current results to a JSON file. Enabled after a successful scan or after loading history. |
 
@@ -162,6 +170,44 @@ After every scan completes, all extracted hashes are joined against all watchlis
 
 Select the watchlist and click **Delete Selected**. A confirmation prompt warns you that all entries will be removed. Deletion cannot be undone.
 
+
+## VirusTotal Lookup
+
+After any scan, click **VirusTotal** to check the results' unique hashes against [VirusTotal](https://www.virustotal.com). The lookup dialog lists each hash with a verdict and detection count, color-coded:
+
+| Verdict | Meaning | Color |
+|---------|---------|-------|
+| `malicious` | One or more engines flag it as malicious | Red |
+| `suspicious` | Flagged suspicious but not malicious | Amber |
+| `clean` | Known to VirusTotal, no detections | Green |
+| `not found` | VirusTotal has no record of this hash | (none) |
+| `n/a` | SHA512 — not indexed by VirusTotal, so it is skipped | (none) |
+| `error` | Lookup failed (rate limit, network, etc.) — the reason is shown | (none) |
+
+VirusTotal identifies files by **MD5, SHA1, and SHA256** only. SHA512 hashes are labeled `n/a` and never sent, so they don't waste an API call. The dialog is self-contained — it does not modify the results table, database, or exports.
+
+> **Free-tier rate limit:** public VirusTotal API keys allow roughly 4 lookups/minute and 500/day. Beyond that, rows come back as `error: QuotaExceededError`. Look up smaller batches, or use a premium key.
+
+### API Key
+
+The lookup needs a VirusTotal API key (get one at <https://www.virustotal.com/gui/my-apikey>). HashHarvest resolves the key in this order:
+
+1. **`VT_API_KEY` environment variable** — if set, the key field is pre-filled and locked.
+2. **`.env` file** — a `VT_API_KEY=...` line in a `.env` file next to the app (project root, or beside the executable when packaged). This file is git-ignored; copy `.env.example` to `.env` to start.
+3. **The dialog's API Key field** — type or paste the key once and it is saved for next time (see storage options below).
+
+You only need one of these. The `.env` and environment-variable options keep the key out of the GUI entirely; the field method is the quickest for one-off use.
+
+### Key storage: plaintext vs. encrypted
+
+When you save a key from the dialog field, HashHarvest offers two backends via the **"Store key in OS keychain (encrypted at rest)"** checkbox:
+
+| Storage | Where the key lives | At-rest encryption | Needs |
+|---------|--------------------|--------------------|-------|
+| **QSettings** (default, unchecked) | Windows registry / plist / ini | No — plaintext | Nothing |
+| **OS keychain** (checked) | Windows Credential Manager / macOS Keychain / Linux Secret Service | Yes | `pip install keyring` |
+
+For a free VirusTotal key, the plaintext default is fine — it's a low-value, revocable, rate-limited secret. If you use a **premium key** or a **shared machine**, install `keyring` and tick the box for encrypted, login-tied storage. The checkbox is disabled with a hint if `keyring` isn't installed. Switching backends moves the key and clears the copy from the other one, so it's never stored in both places. A key supplied via `VT_API_KEY` or `.env` is never written to either store.
 
 ## Scan History
 
@@ -251,6 +297,25 @@ extractor.export_csv("/path/to/output.csv")
 extractor.export_json("/path/to/output.json")
 ```
 
+File-digest mode is a standalone function in the same module. It walks **all** files (not just supported document types) and returns the same result shape as `extract()`, with a null line number and a fixed `"file digest"` context:
+
+```python
+from hashharvest.extractor import hash_files
+
+results, errors = hash_files("/path/to/files", hash_types={"SHA256", "MD5"})
+# results: {file_path: set of (hash_type, hash_value, None, "file digest") tuples}
+# errors:  list of (path, message) tuples for files that could not be read
+```
+
+VirusTotal lookups are handled by [vt_lookup.py](hashharvest/vt_lookup.py) (requires `vt-py`):
+
+```python
+from hashharvest.vt_lookup import lookup_hashes
+
+verdicts = lookup_hashes("<vt-api-key>", ["44d88612fea8a8f36de82e1278abb02f"])
+# verdicts: {hash: (verdict, detail)} — e.g. {"44d8...": ("malicious", "60/72")}
+```
+
 File reading is handled by [readers.py](hashharvest/readers.py), which can also be used directly:
 
 ```python
@@ -323,8 +388,24 @@ The GUI in [main.py](hashharvest/main.py) wires these callbacks to PyQt5 signals
 
 ## Building a Standalone Executable
 
+A ready-made [`HashHarvest.spec`](HashHarvest.spec) drives the build. It is configured for a one-file, windowed executable, excludes unused Qt/stdlib modules to keep the binary small, enables **UPX** compression, and declares the lazily-imported optional dependencies (`vt`, `keyring.backends.Windows`) as hidden imports so the VirusTotal and keychain features work in the packaged app.
+
 ```powershell
-python -m PyInstaller --clean --onefile --windowed --name HashHarvest --hidden-import PyQt5.sip hashharvest/main.py
+python -m pip install pyinstaller
+python -m PyInstaller --clean --upx-dir "C:\path\to\upx" HashHarvest.spec
 ```
 
-The database file (`hashharvest.db`) is written next to the compiled executable at runtime.
+The executable is written to `dist\HashHarvest.exe`.
+
+- **UPX** is enabled inside the spec (`upx=True`), so you only tell PyInstaller where the UPX binary lives — either `--upx-dir "C:\path\to\upx"` or by adding that folder to your `PATH` (then `--upx-dir` can be omitted). `vcruntime140.dll` and `python3*.dll` are excluded from compression on purpose to avoid UPX-related DLL crashes.
+- **Building from the `.spec` ignores** command-line flags like `--onefile`, `--windowed`, `--name`, and `--hidden-import` — those settings live in the spec. Only build-time flags such as `--clean` and `--upx-dir` still apply. Edit the spec to change packaging options.
+
+### Shipping the executable
+
+Ship **only `dist\HashHarvest.exe`**. It is fully self-contained and creates everything it needs on first run:
+
+- **`hashharvest.db`** is *not* bundled. On first launch the app creates a fresh, empty database next to the executable — do **not** ship a `.db` file (shipping your development copy would leak your own scan history).
+- **The VirusTotal API key** is *not* bundled. Do not ship your `.env` file or a `dist\` folder containing one. Each user supplies their own key (see [VirusTotal Lookup](#virustotal-lookup)).
+- Because the app writes `hashharvest.db` beside itself, users should run it from a writable location (their own folder, Desktop, Downloads) rather than a read-only path like `C:\Program Files\` without admin rights.
+
+> After building, test the packaged `.exe` (not just the source): run a scan, open **VirusTotal** and do a lookup, and confirm the **"Store key in OS keychain"** checkbox is enabled. Those exercise the hidden-import bundling of `vt` and `keyring`.
