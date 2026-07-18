@@ -1,11 +1,11 @@
 name: Python package
- 
+
 on:
   push:
     branches: [ "master", "v*-dev" ]
   pull_request:
     branches: [ "master" ]
- 
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,34 +13,61 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
- 
+
     env:
       # PyQt5 (pulled in via hashharvest.keystore) imports headlessly on CI
       # runners with no display when the Qt platform is set to offscreen.
       QT_QPA_PLATFORM: offscreen
- 
+
     steps:
     - uses: actions/checkout@v4
- 
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
         cache: pip
- 
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
- 
+
     - name: Lint with flake8
       run: |
         # Fail the build only on real errors: syntax errors / undefined names.
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # Everything else is advisory and never fails the build.
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
- 
+
     - name: Test with pytest
       run: pytest -q
+
+  build-windows:
+    runs-on: windows-latest
+    needs: build
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build executable
+      run: pyinstaller HashHarvest.spec
+
+    - name: Upload HashHarvest.exe
+      uses: actions/upload-artifact@v4
+      with:
+        name: HashHarvest-windows
+        path: dist/HashHarvest.exe
      
