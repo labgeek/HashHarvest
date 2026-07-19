@@ -75,6 +75,9 @@ include = ["hashharvest*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+# Put the repo root on sys.path so `pytest` (bare, not `python -m pytest`) imports
+# the in-tree hashharvest package without needing an install step in CI.
+pythonpath = ["."]
 
 [tool.coverage.run]
 source = ["hashharvest"]

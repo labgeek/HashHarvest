@@ -22,14 +22,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-<<<<<<< HEAD
     - name: Install Qt6 runtime libraries
       # PyQt6's offscreen platform still dlopens libEGL/libGL/xkbcommon/dbus,
       # which are not present by default on the headless ubuntu runner.
       run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3
 
-=======
->>>>>>> f597faa8b1dbbf285ee9998505f2ada02415c70e
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
@@ -50,10 +47,7 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
     - name: Test with pytest
-<<<<<<< HEAD
       run: pytest -q --cov=hashharvest --cov-report=term-missing
-=======
-      run: pytest -q
 
   build-windows:
     runs-on: windows-latest
@@ -81,5 +75,3 @@ jobs:
       with:
         name: HashHarvest-windows
         path: dist/HashHarvest.exe
-     
->>>>>>> f597faa8b1dbbf285ee9998505f2ada02415c70e

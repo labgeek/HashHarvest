@@ -1,5 +1,6 @@
 """Unit tests for the Qt-free core Scanner, event stream, and log capture."""
 
+import os
 import subprocess
 import sys
 
@@ -9,11 +10,15 @@ from hashharvest.core import Finding, ScanCompleted, ScanProgress, Scanner
 def test_core_imports_without_qt():
     # The whole point of the core split: no Qt in the import graph. Checked in a
     # fresh interpreter, since sibling GUI tests import Qt into this process.
+    # Put the repo root on the subprocess PYTHONPATH so this holds regardless of cwd.
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env = dict(os.environ)
+    env["PYTHONPATH"] = repo_root + os.pathsep + env.get("PYTHONPATH", "")
     code = (
         "import sys, hashharvest.core; "
         "assert 'PyQt6' not in sys.modules and 'PyQt5' not in sys.modules"
     )
-    subprocess.run([sys.executable, "-c", code], check=True)
+    subprocess.run([sys.executable, "-c", code], check=True, env=env)
 
 
 def _write(tmp_path, name, text):
