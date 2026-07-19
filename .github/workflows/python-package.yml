@@ -1,21 +1,11 @@
-<<<<<<< HEAD
 name: Python package
 
-=======
-ckage · YML
-name: Python package
- 
->>>>>>> c3949de692e2ca873b40190ffa2c40087989a1ae
 on:
   push:
     branches: [ "master", "v*-dev" ]
   pull_request:
     branches: [ "master" ]
-<<<<<<< HEAD
 
-=======
- 
->>>>>>> c3949de692e2ca873b40190ffa2c40087989a1ae
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,56 +13,38 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
-<<<<<<< HEAD
 
-=======
- 
->>>>>>> c3949de692e2ca873b40190ffa2c40087989a1ae
     env:
-      # PyQt5 (pulled in via hashharvest.keystore) imports headlessly on CI
+      # PyQt6 (pulled in via hashharvest.keystore) imports headlessly on CI
       # runners with no display when the Qt platform is set to offscreen.
       QT_QPA_PLATFORM: offscreen
-<<<<<<< HEAD
 
     steps:
     - uses: actions/checkout@v4
 
-=======
- 
-    steps:
-    - uses: actions/checkout@v4
- 
->>>>>>> c3949de692e2ca873b40190ffa2c40087989a1ae
+    - name: Install Qt6 runtime libraries
+      # PyQt6's offscreen platform still dlopens libEGL/libGL/xkbcommon/dbus,
+      # which are not present by default on the headless ubuntu runner.
+      run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
         cache: pip
-<<<<<<< HEAD
 
-=======
- 
->>>>>>> c3949de692e2ca873b40190ffa2c40087989a1ae
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 pytest
+        pip install flake8 pytest pytest-cov
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-<<<<<<< HEAD
 
-=======
- 
->>>>>>> c3949de692e2ca873b40190ffa2c40087989a1ae
     - name: Lint with flake8
       run: |
         # Fail the build only on real errors: syntax errors / undefined names.
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # Everything else is advisory and never fails the build.
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-<<<<<<< HEAD
 
-=======
- 
->>>>>>> c3949de692e2ca873b40190ffa2c40087989a1ae
     - name: Test with pytest
-      run: pytest -q
+      run: pytest -q --cov=hashharvest --cov-report=term-missing

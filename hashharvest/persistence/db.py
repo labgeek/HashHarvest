@@ -2,6 +2,64 @@ import os
 import sqlite3
 from datetime import datetime
 
+# Schema version tracked via SQLite's native PRAGMA user_version (no bespoke table).
+# Bump this and add a step to _MIGRATIONS whenever the schema changes.
+SCHEMA_VERSION = 2
+
+# Version 1 schema: created for any fresh or pre-versioning database.
+_BASE_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS scans (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        scanned_at    TEXT NOT NULL,
+        directory     TEXT NOT NULL,
+        hash_types    TEXT NOT NULL,
+        files_scanned INTEGER NOT NULL,
+        hashes_found  INTEGER NOT NULL,
+        skipped_files INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS hash_results (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        scan_id     INTEGER NOT NULL REFERENCES scans(id),
+        file_path   TEXT NOT NULL,
+        file_type   TEXT NOT NULL,
+        hash_type   TEXT NOT NULL,
+        hash_value  TEXT NOT NULL,
+        line_number INTEGER,
+        context     TEXT,
+        annotation  TEXT,
+        UNIQUE(scan_id, file_path, hash_type, hash_value)
+    );
+    CREATE INDEX IF NOT EXISTS idx_hash_results_scan  ON hash_results(scan_id);
+    CREATE INDEX IF NOT EXISTS idx_hash_results_value ON hash_results(hash_value);
+    CREATE TABLE IF NOT EXISTS watchlists (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS watchlist_entries (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        watchlist_id INTEGER NOT NULL REFERENCES watchlists(id) ON DELETE CASCADE,
+        hash_value   TEXT NOT NULL,
+        label        TEXT,
+        added_at     TEXT NOT NULL,
+        UNIQUE(watchlist_id, hash_value)
+    );
+    CREATE INDEX IF NOT EXISTS idx_watchlist_entries_value ON watchlist_entries(hash_value);
+"""
+
+
+def _migrate_v2_add_scan_log(conn):
+    """v2: store each scan's captured log alongside its record."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(scans)").fetchall()}
+    if 'log' not in cols:
+        conn.execute("ALTER TABLE scans ADD COLUMN log TEXT")
+
+
+# Forward migrations keyed by the version they bring the schema TO.
+_MIGRATIONS = {
+    2: _migrate_v2_add_scan_log,
+}
+
 
 class HashDatabase:
     def __init__(self, db_path):
@@ -22,45 +80,16 @@ class HashDatabase:
             if 'md5' in existing_cols:
                 self._migrate_wide_to_narrow(conn)
 
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS scans (
-                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scanned_at    TEXT NOT NULL,
-                    directory     TEXT NOT NULL,
-                    hash_types    TEXT NOT NULL,
-                    files_scanned INTEGER NOT NULL,
-                    hashes_found  INTEGER NOT NULL,
-                    skipped_files INTEGER NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS hash_results (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scan_id     INTEGER NOT NULL REFERENCES scans(id),
-                    file_path   TEXT NOT NULL,
-                    file_type   TEXT NOT NULL,
-                    hash_type   TEXT NOT NULL,
-                    hash_value  TEXT NOT NULL,
-                    line_number INTEGER,
-                    context     TEXT,
-                    annotation  TEXT,
-                    UNIQUE(scan_id, file_path, hash_type, hash_value)
-                );
-                CREATE INDEX IF NOT EXISTS idx_hash_results_scan  ON hash_results(scan_id);
-                CREATE INDEX IF NOT EXISTS idx_hash_results_value ON hash_results(hash_value);
-                CREATE TABLE IF NOT EXISTS watchlists (
-                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name       TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS watchlist_entries (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    watchlist_id INTEGER NOT NULL REFERENCES watchlists(id) ON DELETE CASCADE,
-                    hash_value   TEXT NOT NULL,
-                    label        TEXT,
-                    added_at     TEXT NOT NULL,
-                    UNIQUE(watchlist_id, hash_value)
-                );
-                CREATE INDEX IF NOT EXISTS idx_watchlist_entries_value ON watchlist_entries(hash_value);
-            """)
+            conn.executescript(_BASE_SCHEMA)
+
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            for target in range(version + 1, SCHEMA_VERSION + 1):
+                migrate = _MIGRATIONS.get(target)
+                if migrate is not None:
+                    migrate(conn)
+            if version < SCHEMA_VERSION:
+                # PRAGMA does not accept bound parameters; SCHEMA_VERSION is a trusted int.
+                conn.execute("PRAGMA user_version = %d" % SCHEMA_VERSION)
 
     def _migrate_wide_to_narrow(self, conn):
         """Migrate the old wide schema (one row per file, four hash columns) to the
@@ -103,14 +132,14 @@ class HashDatabase:
         """)
 
     def save_scan(self, directory, scanned_at, hash_types, files_scanned,
-                  hashes_found, skipped_files, results):
+                  hashes_found, skipped_files, results, log=None):
         with self._connect() as conn:
             cursor = conn.execute(
                 "INSERT INTO scans "
-                "(scanned_at, directory, hash_types, files_scanned, hashes_found, skipped_files) "
-                "VALUES (?,?,?,?,?,?)",
+                "(scanned_at, directory, hash_types, files_scanned, hashes_found, skipped_files, log) "
+                "VALUES (?,?,?,?,?,?,?)",
                 (scanned_at, directory, hash_types,
-                 files_scanned, hashes_found, skipped_files)
+                 files_scanned, hashes_found, skipped_files, log)
             )
             scan_id = cursor.lastrowid
             for file_path, hash_pairs in results.items():
@@ -151,6 +180,14 @@ class HashDatabase:
                 (scan_id,)
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_scan_log(self, scan_id):
+        """Return the captured log text for a scan, or None if none was stored."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT log FROM scans WHERE id = ?", (scan_id,)
+            ).fetchone()
+        return row[0] if row else None
 
     # --- Watchlist methods ---
 

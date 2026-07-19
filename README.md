@@ -2,7 +2,7 @@
 
 Author: labgeek@gmail.com
 
-`HashHarvest` (v0.8.0) is a PyQt5 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, Markdown, and Microsoft Office files (Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`) — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs with the line number and surrounding context for each hit, and can be filtered in real time, right-click copied, exported to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Watchlist lets you import known-bad hash lists and instantly highlights any matches red after each scan. A Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
+`HashHarvest` (v0.8.0) is a PyQt6 desktop application for extracting cryptographic hashes from a folder of files. It scans recursively across PDF, text, log, CSV, JSON, XML, Markdown, and Microsoft Office files (Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`) — detecting MD5, SHA1, SHA256, and SHA512 values using exact hex-length matching with negative lookaround so shorter patterns never collide with longer ones. Results are displayed live as the scan runs with the line number and surrounding context for each hit, and can be filtered in real time, right-click copied, exported to CSV or JSON, and automatically persisted to a local SQLite database. A built-in Watchlist lets you import known-bad hash lists and instantly highlights any matches red after each scan. A Scan History dialog lets you filter past scans by date range and reload any previous result set into the main UI for re-inspection or re-export.
 
 HashHarvest has **two scan modes**: *Find hashes in text* (the default — detect hash-shaped strings inside document text) and *Hash the files* (compute each file's own MD5/SHA1/SHA256/SHA512 digest). Whichever mode you use, the resulting hashes can be checked against **VirusTotal** from inside the app for a malicious / suspicious / clean verdict.
 
@@ -71,7 +71,7 @@ The Office formats (`.docx`, `.xlsx`, `.pptx`) are read directly from their unde
 
 - Python 3
 - `pypdf`
-- `PyQt5`
+- `PyQt6`
 - `vt-py` — only needed for the VirusTotal lookup feature. The app runs without it; you are prompted to `pip install vt-py` only if you use a lookup.
 - `keyring` *(optional)* — only needed to store the VirusTotal key encrypted in the OS keychain. Without it, the key is saved as plaintext via `QSettings`.
 
@@ -382,7 +382,7 @@ matches = db.get_scan_matches(scan_id=1)   # returns set of matching hash_value 
 | `import_hashes(watchlist_id, hash_values)` | Adds hash strings to a watchlist, skipping duplicates; returns count inserted. |
 | `get_scan_matches(scan_id)` | Returns the set of `hash_value` strings from a scan that match any watchlist entry. |
 
-The GUI in [main.py](hashharvest/main.py) wires these callbacks to PyQt5 signals emitted by a `ScanWorker` running in a `QThread`.
+The GUI in [main.py](hashharvest/main.py) wires these callbacks to PyQt6 signals emitted by a `ScanWorker` running in a `QThread`.
 
 ## Building a Standalone Executable
 

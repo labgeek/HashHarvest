@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hashharvest"
+version = "0.8.0"
+description = "PyQt6 desktop application for extracting cryptographic hashes from files, with scan history, watchlists, and VirusTotal lookups."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+
+authors = [
+    { name = "JD Durick", email = "labgeek@gmail.com" }
+]
+
+keywords = [
+    "hash",
+    "md5",
+    "sha1",
+    "sha256",
+    "sha512",
+    "forensics",
+    "dfir",
+    "virustotal",
+    "pyqt5",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Environment :: X11 Applications :: Qt",
+    "Topic :: Security",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "pypdf",
+    "PyQt6",
+    "vt-py",
+]
+
+[project.optional-dependencies]
+keychain = [
+    "keyring",
+]
+
+dev = [
+    "build",
+    "pytest",
+    "pytest-cov",
+    "pyinstaller",
+    "twine",
+]
+
+[project.urls]
+Homepage = "https://github.com/labgeek/HashHarvest"
+Repository = "https://github.com/labgeek/HashHarvest"
+Issues = "https://github.com/labgeek/HashHarvest/issues"
+Changelog = "https://github.com/labgeek/HashHarvest/releases"
+
+[project.gui-scripts]
+hashharvest = "hashharvest.main:main"
+
+[tool.setuptools.packages.find]
+include = ["hashharvest*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.coverage.run]
+source = ["hashharvest"]
+# The GUI module is exercised by the offscreen smoke tests but its widget-wiring
+# lines dominate coverage noise; measure the headless core, persistence, and readers.
+omit = ["hashharvest/main.py"]

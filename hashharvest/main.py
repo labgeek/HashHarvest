@@ -1,4 +1,4 @@
-"""PyQt5 desktop application for extracting cryptographic hashes from files."""
+"""PyQt6 desktop application for extracting cryptographic hashes from files."""
 
 import csv
 import json
@@ -8,10 +8,12 @@ import sys
 from datetime import datetime, timedelta
 from hashharvest.persistence.db import HashDatabase
 
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
-from hashharvest.extractor import HashHarvest, hash_files, csv_safe
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import *
+from PyQt6.QtCore import *
+from hashharvest.extractor import csv_safe
+from hashharvest.core import Scanner, setup_logging
+from hashharvest.core.events import Finding, FileSkipped, ScanProgress
 from hashharvest import keystore
 
 
@@ -21,7 +23,7 @@ class ScanWorker(QObject):
     progress_updated = pyqtSignal(int)
     status_updated = pyqtSignal(str)
     result_found = pyqtSignal(str, str, str, str, int, str)
-    scan_finished = pyqtSignal(dict, int)
+    scan_finished = pyqtSignal(dict, int, str)  # results, skipped_count, log
     scan_failed = pyqtSignal(str)
 
     def __init__(self, directory, hash_types=None, mode="text"):
@@ -38,27 +40,24 @@ class ScanWorker(QObject):
         self.hash_types = hash_types
         self.mode = mode
 
+    def _on_event(self, event):
+        """Marshal a core scan event onto the matching GUI signal."""
+        if isinstance(event, ScanProgress):
+            self.progress_updated.emit(event.percent)
+        elif isinstance(event, Finding):
+            self.result_found.emit(
+                event.file_path, event.file_type, event.hash_type,
+                event.hash_value, event.line or 0, event.context,
+            )
+        elif isinstance(event, FileSkipped):
+            self.status_updated.emit(event.message)
+
     def run(self):
-        """Execute extraction and emit completion or failure signals."""
+        """Execute extraction via the core Scanner and emit completion/failure."""
         try:
-            if self.mode == "file":
-                results, errors = hash_files(
-                    self.directory,
-                    self.progress_updated.emit,
-                    self.status_updated.emit,
-                    self.result_found.emit,
-                    hash_types=self.hash_types,
-                )
-                self.scan_finished.emit(results, len(errors))
-            else:
-                extractor = HashHarvest(self.directory)
-                results = extractor.extract(
-                    self.progress_updated.emit,
-                    self.status_updated.emit,
-                    self.result_found.emit,
-                    hash_types=self.hash_types,
-                )
-                self.scan_finished.emit(results, len(extractor.errors))
+            scanner = Scanner(hash_types=self.hash_types, mode=self.mode)
+            result = scanner.scan(self.directory, self._on_event)
+            self.scan_finished.emit(result.results, result.skipped_files, result.log)
         except Exception as error:
             self.scan_failed.emit(str(error))
 
@@ -107,9 +106,9 @@ class pdfAnalysis(QDialog):
         QDialog.__init__(self)
         self.setWindowFlags(
             self.windowFlags()
-            & ~Qt.WindowContextHelpButtonHint
-            | Qt.WindowMaximizeButtonHint
-            | Qt.WindowMinimizeButtonHint
+            & ~Qt.WindowType.WindowContextHelpButtonHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
         )
 
         self.scan_thread = None
@@ -172,12 +171,12 @@ class pdfAnalysis(QDialog):
         for chk in (self.chk_md5, self.chk_sha1, self.chk_sha256, self.chk_sha512):
             chk.setChecked(True)
         self.progress.setValue(0)
-        self.progress.setAlignment(Qt.AlignCenter)
+        self.progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.title_label.setStyleSheet("font-size: 22px; font-weight: bold; color: #1a1a2e;")
         self.subtitle_label.setStyleSheet("font-size: 11px; color: #6c757d;")
-        self.version_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)
+        self.version_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom)
         self.version_label.setStyleSheet("font-size: 12px; font-weight: bold; color: #6c757d;")
-        self.build_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
+        self.build_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
         self.build_label.setStyleSheet("font-size: 10px; color: #6c757d;")
         self.export_csv_btn.setEnabled(False)
         self.export_json_btn.setEnabled(False)
@@ -185,16 +184,16 @@ class pdfAnalysis(QDialog):
         self.results_table.setHorizontalHeaderLabels(
             ["Source File", "File Type", "Hash Type", "Hash Value", "Line", "Context"]
         )
-        self.results_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.results_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.results_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.results_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.results_table.setAlternatingRowColors(True)
         # Paths are long; elide the middle so the drive and filename stay visible.
-        self.results_table.setTextElideMode(Qt.ElideMiddle)
+        self.results_table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         header = self.results_table.horizontalHeader()
         for col in range(self.results_table.columnCount()):
-            header.setSectionResizeMode(col, QHeaderView.Interactive)
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
         # Hash Value stretches by default; Context stretches when the columns are shown.
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.results_table.setColumnWidth(0, 420)
         self.results_table.setColumnWidth(1, 90)
         self.results_table.setColumnWidth(2, 90)
@@ -202,7 +201,7 @@ class pdfAnalysis(QDialog):
         self.results_table.setColumnWidth(5, 400)
         self.results_table.setColumnHidden(4, True)
         self.results_table.setColumnHidden(5, True)
-        self.results_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.results_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.search_box.setPlaceholderText("Filter results…")
         self.search_box.setClearButtonEnabled(True)
 
@@ -283,7 +282,7 @@ class pdfAnalysis(QDialog):
         header_row.addLayout(header_right)
 
         separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShape(QFrame.Shape.HLine)
         separator.setStyleSheet("color: #dee2e6;")
 
         header_layout.addLayout(header_row)
@@ -371,7 +370,7 @@ class pdfAnalysis(QDialog):
         self.results_table.setItem(row, 2, QTableWidgetItem(hash_type))
         self.results_table.setItem(row, 3, QTableWidgetItem(hash_value))
         line_item = QTableWidgetItem(str(line_no) if line_no else "")
-        line_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        line_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.results_table.setItem(row, 4, line_item)
         self.results_table.setItem(row, 5, QTableWidgetItem(context or ""))
         self.hashes_found.setText(str(row + 1))
@@ -428,7 +427,7 @@ class pdfAnalysis(QDialog):
 
         self.scan_thread.start()
 
-    def scan_complete(self, results, skipped_count):
+    def scan_complete(self, results, skipped_count, log=""):
         """Update summary fields and enable export after a successful scan."""
         scanned_count = len(results) + skipped_count
         hash_count = sum(len(hashes) for hashes in results.values())
@@ -446,6 +445,7 @@ class pdfAnalysis(QDialog):
                 hashes_found=hash_count,
                 skipped_files=skipped_count,
                 results=results,
+                log=log,
             )
             self.status_label.setText("Scan complete — saved to database.")
             self._apply_watchlist_highlights(scan_id)
@@ -480,7 +480,7 @@ class pdfAnalysis(QDialog):
         """Open the Scan History dialog and connect its load signal."""
         dialog = ScanHistoryDialog(self.db, self)
         dialog.results_load_requested.connect(self._load_historical_results)
-        dialog.exec_()
+        dialog.exec()
 
     def _load_historical_results(self, scan, rows):
         """Populate the UI with results loaded from a historical scan record.
@@ -517,7 +517,7 @@ class pdfAnalysis(QDialog):
     def open_watchlist_manager(self):
         """Open the Watchlist Manager dialog."""
         dialog = WatchlistDialog(self.db, self)
-        dialog.exec_()
+        dialog.exec()
 
     def open_virustotal(self):
         """Open the VirusTotal lookup dialog for the current scan's unique hashes."""
@@ -532,7 +532,7 @@ class pdfAnalysis(QDialog):
                 "Run a scan first — there are no hashes to look up."
             )
             return
-        VirusTotalDialog(hashes, self).exec_()
+        VirusTotalDialog(hashes, self).exec()
 
     def _apply_watchlist_highlights(self, scan_id):
         """Highlight rows red where the hash value matches any watchlist entry."""
@@ -565,11 +565,11 @@ class pdfAnalysis(QDialog):
         for col in (4, 5):
             self.results_table.setColumnHidden(col, not checked)
         if checked:
-            header.setSectionResizeMode(3, QHeaderView.Interactive)
-            header.setSectionResizeMode(5, QHeaderView.Stretch)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+            header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         else:
-            header.setSectionResizeMode(3, QHeaderView.Stretch)
-            header.setSectionResizeMode(5, QHeaderView.Interactive)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
 
     def _filter_results(self, text):
         """Show only rows where any cell contains text (case-insensitive); show all when empty."""
@@ -590,7 +590,7 @@ class pdfAnalysis(QDialog):
         menu = QMenu(self)
         copy_hash_action = menu.addAction("Copy Hash")
         copy_row_action = menu.addAction("Copy Row")
-        action = menu.exec_(self.results_table.viewport().mapToGlobal(pos))
+        action = menu.exec(self.results_table.viewport().mapToGlobal(pos))
         if action == copy_hash_action:
             item = self.results_table.item(row, 3)
             if item:
@@ -674,7 +674,7 @@ class ScanHistoryDialog(QDialog):
             parent: Optional parent widget.
         """
         QDialog.__init__(self, parent)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.db = db
         self._scan_rows = []
 
@@ -694,21 +694,21 @@ class ScanHistoryDialog(QDialog):
         self.scans_table.setHorizontalHeaderLabels(
             ["Date / Time", "Directory", "Files", "Hashes Found"]
         )
-        self.scans_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.scans_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.scans_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.scans_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.scans_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.scans_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.scans_table.setAlternatingRowColors(True)
         self.scans_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeToContents
+            0, QHeaderView.ResizeMode.ResizeToContents
         )
         self.scans_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.Stretch
+            1, QHeaderView.ResizeMode.Stretch
         )
         self.scans_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeToContents
+            2, QHeaderView.ResizeMode.ResizeToContents
         )
         self.scans_table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.ResizeToContents
+            3, QHeaderView.ResizeMode.ResizeToContents
         )
 
         self.load_btn = QPushButton("Load Selected")
@@ -808,7 +808,7 @@ class WatchlistDialog(QDialog):
             parent: Optional parent widget.
         """
         QDialog.__init__(self, parent)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.db = db
         self._watchlist_rows = []
 
@@ -896,9 +896,9 @@ class WatchlistDialog(QDialog):
         reply = QMessageBox.question(
             self, "Delete Watchlist",
             "Delete \"%s\" and all %d of its entries?" % (w['name'], w['entry_count']),
-            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             self.db.delete_watchlist(w['id'])
             self._refresh()
 
@@ -973,7 +973,7 @@ class VirusTotalDialog(QDialog):
     def __init__(self, hashes, parent=None):
         """Build the dialog for the given set of hash strings."""
         QDialog.__init__(self, parent)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.setWindowTitle("VirusTotal Lookup")
         self.setGeometry(260, 260, 720, 460)
 
@@ -987,7 +987,7 @@ class VirusTotalDialog(QDialog):
 
         key_row = QHBoxLayout()
         self.api_edit = QLineEdit(keystore.load_key())
-        self.api_edit.setEchoMode(QLineEdit.Password)
+        self.api_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_edit.setPlaceholderText("Paste your VirusTotal API key")
         key_row.addWidget(QLabel("API Key"))
         key_row.addWidget(self.api_edit, 1)
@@ -1017,19 +1017,19 @@ class VirusTotalDialog(QDialog):
         )
         self.progress = QProgressBar()
         self.progress.setValue(0)
-        self.progress.setAlignment(Qt.AlignCenter)
+        self.progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
         control_row.addWidget(self.lookup_btn)
         control_row.addWidget(self.progress, 1)
 
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Hash", "Verdict", "Detections"])
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setAlternatingRowColors(True)
         vt_header = self.table.horizontalHeader()
-        vt_header.setSectionResizeMode(0, QHeaderView.Stretch)
-        vt_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        vt_header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        vt_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        vt_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        vt_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         for digest in self._hashes:
             row = self.table.rowCount()
             self.table.insertRow(row)
@@ -1150,9 +1150,15 @@ def _load_dotenv():
             os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
-if __name__ == "__main__":
+def main():
+    """Entry point: configure logging, load .env, start the Qt app, show the window."""
+    setup_logging()
     _load_dotenv()
     app = QApplication(sys.argv)
     p = pdfAnalysis()
     p.show()
-    app.exec_()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()

@@ -12,7 +12,7 @@ and the copy in the other backend is removed so the key lives in exactly one pla
 
 import os
 
-from PyQt5.QtCore import QSettings
+from PyQt6.QtCore import QSettings
 
 _ORG = _APP = _SERVICE = "HashHarvest"
 _KEY = "vt_api_key"
