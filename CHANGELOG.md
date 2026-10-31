@@ -5,6 +5,14 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ---
 
+## [10-31-2026 12:24:40]
+
+### Changed
+- Version bumped to **v0.8.1** in the GUI version label and window title (`main.py`), the package metadata (`pyproject.toml`), and the `README.md` / `USAGE.md` headers. Release contents: the fixes in the 10-31-2026 10:34:39 entry below
+
+### Fixed
+- **Package build failing** — current setuptools rejects the `License :: OSI Approved :: MIT License` classifier alongside the PEP 639 `license = "MIT"` expression, so `python -m build` (and therefore the PyPI publish workflow) failed before producing a wheel. Removed the redundant classifier; the license is still declared via `license` / `license-files` (`pyproject.toml`)
+
 ## [10-31-2026 10:34:39]
 
 ### Fixed
