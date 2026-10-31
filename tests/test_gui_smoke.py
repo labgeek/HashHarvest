@@ -64,6 +64,47 @@ def test_dialogs_construct(app, db):
     hh.VirusTotalDialog({"a" * 64, "b" * 32}).close()
 
 
+def test_gui_export_csv_is_utf8_with_bom(app, tmp_path, monkeypatch):
+    import codecs
+
+    out = str(tmp_path / "gui.csv")
+    errors = []
+    monkeypatch.setattr(hh.QFileDialog, "getSaveFileName", lambda *a, **k: (out, ""))
+    monkeypatch.setattr(hh.QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(hh.QMessageBox, "critical", lambda *a, **k: errors.append(a))
+
+    win = hh.pdfAnalysis()
+    # "报告" is not encodable in cp1252, the Windows locale default.
+    win.scan_results = {"C:/cases/\u62a5\u544a.txt": {("MD5", "a" * 32, 1, "ctx")}}
+    win.export_csv()
+    win.close()
+
+    assert errors == []
+    with open(out, "rb") as fh:
+        raw = fh.read()
+    assert raw.startswith(codecs.BOM_UTF8)
+    assert "\u62a5\u544a" in raw.decode("utf-8-sig")
+
+
+def test_historical_file_digest_scan_keeps_null_line(app, db):
+    results = {"C:/ev/no_extension": {("MD5", "c" * 32, None, "file digest")}}
+    scan_id = db.save_scan(
+        directory="C:/ev", scanned_at="2026-10-31T00:00:00", hash_types="MD5",
+        files_scanned=1, hashes_found=1, skipped_files=0, results=results,
+    )
+    scan = next(s for s in db.get_scans() if s["id"] == scan_id)
+
+    win = hh.pdfAnalysis()
+    win.db = db
+    win._load_historical_results(scan, db.get_results(scan_id))
+
+    # Reloaded results must match the live shape, so exports don't write Line=0.
+    assert win.scan_results == results
+    assert win.results_table.item(0, 1).text() == "FILE"
+    assert win.results_table.item(0, 4).text() == ""
+    win.close()
+
+
 def test_watchlist_hash_extraction():
     text = "bad: %s and %s plus junk" % ("d" * 32, "e" * 64)
     found = hh.WatchlistDialog._extract_hashes(text)
