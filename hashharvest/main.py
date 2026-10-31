@@ -146,7 +146,7 @@ class pdfAnalysis(QDialog):
         self.status_label = QLabel("Ready")
         self.title_label = QLabel("HashHarvest")
         self.subtitle_label = QLabel("Multi-Algorithm File Hash Analysis")
-        self.version_label = QLabel("v0.8.0")
+        self.version_label = QLabel("v0.8.1")
         # "Build date" = mtime of the executable when frozen, else this source file.
         _build_src = sys.executable if getattr(sys, 'frozen', False) else __file__
         _build_dt = datetime.fromtimestamp(os.path.getmtime(_build_src))
@@ -293,7 +293,7 @@ class pdfAnalysis(QDialog):
 
         self.setLayout(main_layout)
         self.setGeometry(200, 200, 1050, 400)
-        self.setWindowTitle("HashHarvest v0.8.0 (labgeek)")
+        self.setWindowTitle("HashHarvest v0.8.1 (labgeek)")
         self.setFocus()
 
         self.execute.clicked.connect(self.search)

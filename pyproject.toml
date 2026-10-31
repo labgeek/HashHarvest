@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hashharvest"
-version = "0.8.0"
+version = "0.8.1"
 description = "PyQt6 desktop application for extracting cryptographic hashes from files, with scan history, watchlists, and VirusTotal lookups."
 readme = "README.md"
 license = "MIT"
@@ -35,7 +35,6 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
     "Environment :: X11 Applications :: Qt",
     "Topic :: Security",
     "Operating System :: OS Independent",
