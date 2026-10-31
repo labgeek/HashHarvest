@@ -5,6 +5,18 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ---
 
+## [10-31-2026 10:34:39]
+
+### Fixed
+- **PPTX slide order and labels** — slides were sorted as strings (`slide1, slide10, slide11, slide2, …`) and labeled by position, so in a deck with 10+ slides `[slide N]` pointed at the wrong slide. Slides are now ordered and labeled by the number in their part name (`readers.py`)
+- **CSV export on Windows** — exports were written in the locale encoding (cp1252 on Windows) and failed with `UnicodeEncodeError` when a path or context contained characters outside it (e.g. CJK). Both the GUI export and `HashHarvest.export_csv()` now write UTF-8 with a BOM so Excel opens them correctly (`main.py`, `extractor.py`)
+- **Scans hanging on special files** — a FIFO, socket, or device node under the scanned folder blocked the scan forever when opened. Both scan modes now skip anything that is not a regular file and report it as skipped (`extractor.py`)
+- **Leaked SQLite connections** — every `HashDatabase` call left its connection open until garbage collection (the `sqlite3` context manager commits but never closes), holding a handle on `hashharvest.db`. `_connect()` now commits or rolls back and always closes (`db.py`)
+- **Reloaded scans differing from live scans** — loading a file-digest scan from Scan History turned its empty line number into `0`, so exports wrote `Line=0`; extensionless files were stored with an empty file type instead of `FILE` (`main.py`, `db.py`)
+
+### Added
+- Regression tests for each fix: `tests/test_readers.py`, `tests/test_export.py`, `tests/test_db.py`, plus new cases in `tests/test_hash_files.py` and `tests/test_gui_smoke.py`
+
 ## [07-18-2026 17:01:08]
 
 ### Added

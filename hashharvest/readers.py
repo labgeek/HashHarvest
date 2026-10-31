@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -213,15 +214,25 @@ def read_xlsx(path):
     return "\n".join(lines)
 
 
+_PPTX_SLIDE_RE = re.compile(r"^ppt/slides/slide(\d+)\.xml$")
+
+
 def _read_pptx_chunks(path):
-    """Return one (text, location) tuple per slide that has text content."""
+    """Return one (text, location) tuple per slide that has text content.
+
+    Slides are ordered and labeled by the number in their part name
+    (``slide10.xml`` -> ``"slide 10"``). A plain string sort would put
+    ``slide10.xml`` before ``slide2.xml`` and mislabel every slide after 9.
+    """
     chunks = []
     with zipfile.ZipFile(path) as archive:
         slides = sorted(
-            name for name in archive.namelist()
-            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+            (int(match.group(1)), name)
+            for name in archive.namelist()
+            for match in [_PPTX_SLIDE_RE.match(name)]
+            if match
         )
-        for i, name in enumerate(slides, start=1):
+        for i, name in slides:
             with archive.open(name) as fh:
                 tree = ET.parse(fh)
             lines = [
@@ -237,7 +248,7 @@ def _read_pptx_chunks(path):
 def read_pptx(path):
     """Extract paragraph text from all slides in a .pptx file.
 
-    Iterates over slide XML files in slide-number order and reassembles each
+    Iterates over slide XML files in numeric slide-number order and reassembles each
     DrawingML ``<a:p>`` paragraph from its ``<a:t>`` text runs.
 
     Args:

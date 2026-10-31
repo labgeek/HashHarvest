@@ -11,7 +11,7 @@ from hashharvest.persistence.db import HashDatabase
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import *
-from hashharvest.extractor import csv_safe
+from hashharvest.extractor import CSV_ENCODING, csv_safe
 from hashharvest.core import Scanner, setup_logging
 from hashharvest.core.events import Finding, FileSkipped, ScanProgress
 from hashharvest import keystore
@@ -496,7 +496,9 @@ class pdfAnalysis(QDialog):
             path = row['file_path']
             if path not in scan_results:
                 scan_results[path] = set()
-            line_no = row['line_number'] or 0
+            # Keep a missing line number as None (file-digest rows), matching what a
+            # live scan holds, so exports of a reloaded scan don't write Line=0.
+            line_no = row['line_number']
             context = row['context'] or ""
             scan_results[path].add((row['hash_type'], row['hash_value'], line_no, context))
             self.add_result(
@@ -611,7 +613,7 @@ class pdfAnalysis(QDialog):
         if not path:
             return
         try:
-            with open(path, mode='w', newline='') as f:
+            with open(path, mode='w', newline='', encoding=CSV_ENCODING) as f:
                 writer = csv.writer(f, lineterminator='\n')
                 writer.writerow(['Absolute_Path', 'Hash_Type', 'Hash_Value', 'Line', 'Context'])
                 for file_path, hashes in sorted(self.scan_results.items()):

@@ -19,6 +19,22 @@ def csv_safe(value):
     return value
 
 
+# UTF-8 with a BOM: never fails on non-Latin paths (the Windows locale default,
+# cp1252, does), and Excel detects the BOM and decodes the file correctly.
+CSV_ENCODING = "utf-8-sig"
+
+
+def _require_regular_file(path):
+    """Raise OSError unless ``path`` is a regular file (or a symlink to one).
+
+    Opening a FIFO, socket, or device node for reading can block forever, so
+    special files are rejected up front and reported as skipped like any other
+    unreadable file.
+    """
+    if not os.path.isfile(path):
+        raise OSError("not a regular file")
+
+
 # Constructors for the file-digest mode, keyed by the same names the GUI uses.
 _HASHLIB_ALGOS = {
     'MD5': hashlib.md5,
@@ -65,6 +81,7 @@ def hash_files(directory, progress_callback=None, status_callback=None,
 
     for count, path in enumerate(paths, start=1):
         try:
+            _require_regular_file(path)
             digests = {name: ctor() for name, ctor in algos}
             with open(path, "rb") as fh:
                 for block in iter(lambda: fh.read(1 << 16), b""):
@@ -147,6 +164,7 @@ class HashHarvest:
 
         for count, path in enumerate(paths, start=1):
             try:
+                _require_regular_file(path)
                 chunks = read_file_chunks(path)
                 found = {}  # (hash_type, hash_value) -> (line_no, context)
                 for chunk_text, location in chunks:
@@ -181,7 +199,7 @@ class HashHarvest:
 
     def export_csv(self, path):
         """Write results to a CSV file at the given path."""
-        with open(path, mode='w', newline='') as f:
+        with open(path, mode='w', newline='', encoding=CSV_ENCODING) as f:
             writer = csv.writer(f, lineterminator='\n')
             writer.writerow(['Absolute_Path', 'Hash_Type', 'Hash_Value', 'Line', 'Context'])
             for file_path, hashes in sorted(self.results.items()):

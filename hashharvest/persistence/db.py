@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 
 # Schema version tracked via SQLite's native PRAGMA user_version (no bespoke table).
@@ -66,10 +67,22 @@ class HashDatabase:
         self._db_path = db_path
         self._init_schema()
 
+    @contextmanager
     def _connect(self):
+        """Yield a connection that commits on success, rolls back on error, and is
+        always closed.
+
+        ``sqlite3.Connection``'s own context manager only commits/rolls back — it
+        never closes — so each call used to leak a connection (and, on Windows,
+        an open handle on the database file) until garbage collection.
+        """
         conn = sqlite3.connect(self._db_path)
-        conn.execute("PRAGMA foreign_keys = ON")
-        return conn
+        try:
+            conn.execute("PRAGMA foreign_keys = ON")
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_schema(self):
         with self._connect() as conn:
@@ -143,7 +156,8 @@ class HashDatabase:
             )
             scan_id = cursor.lastrowid
             for file_path, hash_pairs in results.items():
-                file_type = os.path.splitext(file_path)[1].lstrip('.').upper()
+                # Same rule as the extractor: extensionless files are "FILE".
+                file_type = os.path.splitext(file_path)[1].lstrip('.').upper() or "FILE"
                 for hash_type, hash_value, line_no, context in hash_pairs:
                     conn.execute(
                         "INSERT OR IGNORE INTO hash_results "
