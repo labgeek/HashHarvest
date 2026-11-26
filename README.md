@@ -15,6 +15,7 @@ Find every MD5, SHA1, SHA256 and SHA512 hash in a folder of evidence, or hash it
 - **Triage:** watchlists highlight known-bad hashes, and VirusTotal lookup is optional.
 - **Provenance:** each result carries its source file's SHA-256, and each export gets a manifest with the tool version, time and the export's own SHA-256.
 - **History:** scans are saved locally and can be reloaded and re-exported.
+- **Light and dark themes (v1.0.1):** follow your Windows theme or choose a remembered preference with the header toggle. See [Appearance](USAGE.md#appearance).
 - **Command line:** `hashharvest-cli` runs the same scan for scripts.
 
 ## Install

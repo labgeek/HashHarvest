@@ -119,7 +119,13 @@ Download a release or [build it](#building-from-source). It needs Windows 10 or 
 
 Double-click `HashHarvest.exe`.
 
-The app starts in your Windows light or dark theme. The **Dark mode** / **Light mode** button in the top-right corner switches it, and your choice is remembered.
+### Appearance
+
+Available since v1.0.1. Until you choose a theme, the app follows your Windows light or dark setting, including changes made while the app is open.
+
+Click **Dark mode** in the top-right corner to switch to dark, or **Light mode** to switch to light. The button names the theme it will switch to. The app's controls, tables, dialogs and Windows title bar update to match.
+
+Your choice is remembered for the next launch and takes precedence over the Windows setting. If local storage is unavailable, switching still works, but the choice lasts only until you close the app.
 
 ### Files
 
