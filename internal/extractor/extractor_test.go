@@ -368,7 +368,7 @@ func TestCancelInsideAFileIsNotASkip(t *testing.T) {
 	if _, err := digestFile(ctx, path, nil); !errors.Is(err, context.Canceled) {
 		t.Errorf("digestFile: %v", err)
 	}
-	if _, err := extractFile(ctx, write(t, dir, "a.txt", md5Hash), nil); !errors.Is(err, context.Canceled) {
+	if _, _, err := extractFile(ctx, write(t, dir, "a.txt", md5Hash), nil); !errors.Is(err, context.Canceled) {
 		t.Errorf("extractFile: %v", err)
 	}
 }

@@ -224,6 +224,9 @@ func (a *App) runScan(ctx context.Context, directory, mode string, hashTypes []s
 		case scanner.FileSkipped:
 			flush()
 			a.ui.emit("scan:status", e.Message)
+		case scanner.Note:
+			flush()
+			a.ui.emit("scan:status", e.Message)
 		}
 	})
 	flush()

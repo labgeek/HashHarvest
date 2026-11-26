@@ -41,7 +41,8 @@ type FileError struct {
 // Callbacks receives scan events; any field may be nil.
 type Callbacks struct {
 	Progress func(percent int)
-	Status   func(message string)
+	Status   func(message string) // a file or folder was skipped
+	Notice   func(message string) // a file was read differently, e.g. as plain text
 	Result   func(path, fileType string, hit Hit)
 }
 
@@ -267,7 +268,10 @@ func Extract(ctx context.Context, dir string, types []string, cb Callbacks) (Res
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-		hits, err := extractFile(ctx, path, types)
+		hits, note, err := extractFile(ctx, path, types)
+		if note != "" && cb.Notice != nil {
+			cb.Notice(path + ": " + note)
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err() // cancelled partway through this file
@@ -288,41 +292,57 @@ func Extract(ctx context.Context, dir string, types []string, cb Callbacks) (Res
 	return results, fileErrors, nil
 }
 
-func extractFile(ctx context.Context, path string, types []string) (hits []Hit, err error) {
+// extractFile returns the hashes in one file. note, when not empty, says
+// the file was read differently than its type suggests.
+func extractFile(ctx context.Context, path string, types []string) (hits []Hit, note string, err error) {
 	// Scanned files are untrusted. A parser bug must skip that one file, as
 	// Python's per-file "except Exception" did, not take down the scan.
 	defer func() {
 		if r := recover(); r != nil {
-			hits, err = nil, fmt.Errorf("internal error reading file: %v", r)
+			hits, note, err = nil, "", fmt.Errorf("internal error reading file: %v", r)
 		}
 	}()
 	if err := requireRegularFile(path); err != nil {
-		return nil, err
-	}
-	chunks, err := readers.ReadFileChunks(path)
-	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	hits = []Hit{}
 	seen := map[[2]string]bool{}
+	add := func(hit Hit, location string) {
+		key := [2]string{hit.HashType, hit.HashValue}
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		if location != "" {
+			hit.Context = fmt.Sprintf("[%s] %s", location, hit.Context)
+		}
+		hits = append(hits, hit)
+	}
+
+	if stream, note := readers.StreamPlan(path); stream {
+		f := newHashFinder(types, func(hit Hit) { add(hit, "") })
+		if err := readers.StreamText(ctx, path, f.write); err != nil {
+			return nil, "", err
+		}
+		f.close()
+		SortHits(hits)
+		return hits, note, nil
+	}
+
+	chunks, err := readers.ReadFileChunks(path)
+	if err != nil {
+		return nil, "", err
+	}
 	for _, chunk := range chunks { // a PDF page or PPTX slide, or the whole text
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		for _, hit := range FindHashes(chunk.Text, types) {
-			key := [2]string{hit.HashType, hit.HashValue}
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			if chunk.Location != "" {
-				hit.Context = fmt.Sprintf("[%s] %s", chunk.Location, hit.Context)
-			}
-			hits = append(hits, hit)
+			add(hit, chunk.Location)
 		}
 	}
 	SortHits(hits)
-	return hits, nil
+	return hits, "", nil
 }
 
 // SortHits orders hits by hash type, then value, the order every export uses.
@@ -333,51 +353,6 @@ func SortHits(hits []Hit) {
 		}
 		return hits[i].HashValue < hits[j].HashValue
 	})
-}
-
-// FindHashes returns, in order of appearance, every standalone run of
-// exactly 32, 40, 64, or 128 hex digits in text, lowercased, with its
-// 1-based line number and up to 60 characters of context on each side.
-//
-// Go's regexp has no lookaround, so the Python patterns
-// (?<![a-fA-F0-9])[a-fA-F0-9]{N}(?![a-fA-F0-9]) are implemented as
-// "a maximal hex run whose length is N", which is equivalent.
-func FindHashes(text string, types []string) []Hit {
-	runes := []rune(text)
-	var hits []Hit
-	line := 1
-	for i := 0; i < len(runes); {
-		if !isHex(runes[i]) {
-			if runes[i] == '\n' {
-				line++
-			}
-			i++
-			continue
-		}
-		start := i
-		for i < len(runes) && isHex(runes[i]) {
-			i++
-		}
-		hashType, ok := typeByLength[i-start]
-		if !ok || !selected(types, hashType) {
-			continue
-		}
-		from, to := start-60, i+60
-		if from < 0 {
-			from = 0
-		}
-		if to > len(runes) {
-			to = len(runes)
-		}
-		context := strings.ReplaceAll(string(runes[from:to]), "\n", " ")
-		hits = append(hits, Hit{
-			HashType:  hashType,
-			HashValue: strings.ToLower(string(runes[start:i])),
-			Line:      line,
-			Context:   readers.PyStrip(context),
-		})
-	}
-	return hits
 }
 
 // HashSet returns the distinct hash-shaped strings found anywhere in text,

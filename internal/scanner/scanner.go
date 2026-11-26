@@ -14,7 +14,7 @@ import (
 // loggerName is kept from the Python module so stored scan logs read the same.
 const loggerName = "hashharvest.core.scanner"
 
-// Event is one of Progress, Finding, FileSkipped, or Completed.
+// Event is one of Progress, Finding, FileSkipped, Note, or Completed.
 type Event any
 
 // Progress is the percentage of files processed so far (0-100).
@@ -29,6 +29,10 @@ type Finding struct {
 
 // FileSkipped reports a file that could not be read or parsed.
 type FileSkipped struct{ Message string }
+
+// Note reports a file that was read differently than its type suggests,
+// such as an oversized JSON file scanned as plain text.
+type Note struct{ Message string }
 
 // Completed is the terminal event with the scan's summary counts.
 type Completed struct{ FilesScanned, HashesFound, SkippedFiles int }
@@ -69,6 +73,10 @@ func (s Scanner) Scan(ctx context.Context, dir string, onEvent func(Event)) (*Re
 		Status: func(message string) {
 			applog.Warn(loggerName, "%s", message) // kept in the stored scan log
 			emit(FileSkipped{message})
+		},
+		Notice: func(message string) {
+			applog.Warn(loggerName, "%s", message) // kept in the stored scan log
+			emit(Note{message})
 		},
 		Result: func(path, fileType string, hit extractor.Hit) {
 			emit(Finding{path, fileType, hit})
