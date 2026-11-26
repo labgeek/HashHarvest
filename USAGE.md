@@ -1,6 +1,6 @@
 # HashHarvest — Usage Guide
 
-HashHarvest (v1.0.1) is a desktop tool for working with cryptographic hashes (MD5, SHA1, SHA256, SHA512). It can either **find hashes written inside files** or **compute each file's own digest**, then triage the results — including a **VirusTotal** reputation check — and export them. It is designed for incident response, forensics, and threat intelligence workflows.
+HashHarvest (v1.0.2) is a desktop tool for working with cryptographic hashes (MD5, SHA1, SHA256, SHA512). It can either **find hashes written inside files** or **compute each file's own digest**, then triage the results — including a **VirusTotal** reputation check — and export them. It is designed for incident response, forensics, and threat intelligence workflows.
 
 ---
 
