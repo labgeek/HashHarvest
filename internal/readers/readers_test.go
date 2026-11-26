@@ -120,9 +120,6 @@ func TestPyCSVRows(t *testing.T) {
 			t.Errorf("%s: got %q, %v; want %q", tc.name, got, err, tc.want)
 		}
 	}
-	if _, err := pyCSVRows(strings.Repeat("x", csvFieldLimit+1)); err == nil {
-		t.Error("a field over the size limit must be an error")
-	}
 }
 
 func TestReadJSON(t *testing.T) {
@@ -146,11 +143,50 @@ func TestReadJSON(t *testing.T) {
 			t.Errorf("%s: got %q, %v; want %q", tc.in, got, err, tc.want)
 		}
 	}
-	for _, bad := range []string{`{"a": `, `{"a": 1} trailing`, "\xef\xbb\xbf{}", "{\"a\": \"\xff\"}", ``,
+	for _, bad := range []string{`{"a": `, `{"a": 1} trailing`, "{\"a\": \"\xff\"}", ``,
 		`{NaN: 1}`, `{"a": 1, Infinity: 2}`, `-NaN`, `NaNx`, `[nan]`, `[1 NaN]`} {
 		if _, err := ReadFile(writeFile(t, "f.json", []byte(bad))); err == nil {
 			t.Errorf("%q: expected an error", bad)
 		}
+	}
+}
+
+func TestReadJSONWithByteOrderMark(t *testing.T) {
+	got, err := ReadFile(writeFile(t, "f.json", []byte("\xef\xbb\xbf{\"md5\": \""+md5Hash+"\"}")))
+	if want := "md5\n" + md5Hash; err != nil || got != want {
+		t.Errorf("got %q, %v; want %q", got, err, want)
+	}
+}
+
+func TestReadJSONLines(t *testing.T) {
+	const bom = "\xef\xbb\xbf"
+	cases := []struct{ name, in, want string }{
+		{"objects", `{"a": 1}` + "\n" + `{"md5": "` + md5Hash + `"}` + "\n", "a\n1\nmd5\n" + md5Hash},
+		{"CRLF, blank lines, no final newline", `{"a": 1}` + "\r\n\r\n  \r\n[2, 3]", "a\n1\n2\n3"},
+		{"scalars and NaN", `"x"` + "\n" + `{"b": NaN}` + "\n7\n", "x\nb\nnan\n7"},
+		{"UTF-8 byte-order mark", bom + `{"a": 1}` + "\n" + `{"b": 2}`, "a\n1\nb\n2"},
+	}
+	for _, tc := range cases {
+		got, err := ReadFile(writeFile(t, "f.json", []byte(tc.in)))
+		if err != nil || got != tc.want {
+			t.Errorf("%s: got %q, %v; want %q", tc.name, got, err, tc.want)
+		}
+	}
+	// One bad line means the file is neither JSON nor JSON Lines.
+	for _, bad := range []string{`{"a": 1}` + "\n{broken\n", `{"a": 1}` + "\n" + `{"b":` + "\n2", `{"a": 1} {"b": 2}`} {
+		if _, err := ReadFile(writeFile(t, "f.json", []byte(bad))); err == nil {
+			t.Errorf("%q: expected an error", bad)
+		}
+	}
+}
+
+func TestCSVLargeFieldIsScanned(t *testing.T) {
+	// Python's csv module stops at 131072 characters; evidence exports with
+	// large cells (message bodies, base64) must still be scanned.
+	big := strings.Repeat("y", 200_000)
+	got, err := ReadFile(writeFile(t, "f.csv", []byte("x,\""+big+" "+md5Hash+"\"\nlast,row\n")))
+	if want := "x " + big + " " + md5Hash + "\nlast row"; err != nil || got != want {
+		t.Errorf("err = %v, %d bytes; want %d", err, len(got), len(want))
 	}
 }
 
