@@ -5,6 +5,36 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ---
 
+## [11-26-2026 11:36:03] — v1.0.0
+
+### Added
+- GitHub Actions: CI (checks, Wails build, GUI smoke test, Linux tests), CodeQL, and a release workflow that creates a draft release with checksums
+- **Cancel Scan** button that stops a scan, even inside a large file
+- A list of skipped files with reasons (**View list**), and **View Log** in Scan History
+- Each result records its source file's SHA-256 (`Source_SHA256` / `source_sha256` export column; database schema 3)
+- A `<export>.manifest.json` next to every export, with the tool version, export time, export SHA-256 and scan details
+- `hashharvest-cli`, a command-line scanner
+- Synthetic sample evidence and a watchlist in `samples/`
+- `.env.example`
+
+### Changed
+- Version 1.0.0
+- Memory use is bounded: text files are streamed (a 1 GB log needs about 15 MB); CSV, JSON and XML over 128 MiB are scanned as plain text; Office and PDF files have size limits
+- Timestamps and log lines include the UTC offset
+- A missing or unreadable scan folder is now an error; unreadable subfolders count as skipped files
+- Links to folders are reported; links to files outside the scan folder are no longer followed
+- `README.md` rewritten; detail moved to `USAGE.md` and `GO_PORT.md`
+- `app.go` split by feature; shared version and manifest code moved into `internal/`
+
+### Fixed
+- UTF-16 text files were read as noise, so their hashes were missed with nothing reported
+- Unreadable folders disappeared from scans without being reported
+- JSON with a byte-order mark, JSON Lines, and CSV cells over 131072 characters caused the whole file to be skipped
+- A PDF form that draws itself could hang a scan
+
+### Security
+- Added a Content-Security-Policy to the app window and disabled opening files by dropping them on it
+
 ## [11-26-2026 08:27:40]
 
 ### Added

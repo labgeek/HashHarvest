@@ -1,6 +1,6 @@
 # HashHarvest — Usage Guide
 
-HashHarvest (v0.8.0) is a desktop GUI tool for working with cryptographic hashes (MD5, SHA1, SHA256, SHA512). It can either **find hashes written inside files** or **compute each file's own digest**, then triage the results — including a **VirusTotal** reputation check — and export them. It is designed for incident response, forensics, and threat intelligence workflows.
+HashHarvest (v1.0.0) is a desktop tool for working with cryptographic hashes (MD5, SHA1, SHA256, SHA512). It can either **find hashes written inside files** or **compute each file's own digest**, then triage the results — including a **VirusTotal** reputation check — and export them. It is designed for incident response, forensics, and threat intelligence workflows.
 
 ---
 
@@ -13,7 +13,9 @@ HashHarvest (v0.8.0) is a desktop GUI tool for working with cryptographic hashes
 5. [VirusTotal Lookup](#virustotal-lookup)
 6. [Scan History](#scan-history)
 7. [Exporting Results](#exporting-results)
-8. [Troubleshooting](#troubleshooting)
+8. [Command Line](#command-line)
+9. [What Is Read and Skipped](#what-is-read-and-skipped)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -49,7 +51,7 @@ Double-click `HashHarvest.exe`, or during development run `wails dev` from the p
 | File | Location |
 |------|----------|
 | `hashharvest.db` | Next to the executable (created on first run) |
-| `.env` (optional) | Next to the executable |
+| `.env` (optional) | Next to the executable; copy [`.env.example`](.env.example) to start |
 | Logs | `%USERPROFILE%\.hashharvest\logs\hashharvest.log` (rotates at 1 MB, 5 backups) |
 
 Run the executable from a writable folder, since the database is written beside it. When sharing the app, ship only `HashHarvest.exe` — never your `hashharvest.db` or `.env`.
@@ -79,9 +81,11 @@ Check or uncheck **MD5**, **SHA1**, **SHA256**, and **SHA512** to control which 
 
 ### 4. Run the Scan
 
-Click **Start Scan**. The progress bar updates as each file is processed. Files that cannot be read are skipped and counted under **Skipped Files** — the scan always continues to completion.
+Click **Start Scan**. The progress bar updates as each file is processed, and results appear in the table as they are found.
 
-Results appear in the table as they are found, in real time.
+**Cancel Scan** appears while a scan runs and stops it, even partway through a large file. A cancelled scan is not saved and leaves nothing to export.
+
+Files and folders that cannot be read are skipped, counted under **Skipped Files**, and the scan continues. Click **View list** next to the count to see each path and why it was skipped. See [What Is Read and Skipped](#what-is-read-and-skipped).
 
 ### 5. Clear and Re-scan
 
@@ -172,7 +176,7 @@ You need a free VirusTotal API key — sign in at <https://www.virustotal.com/gu
    .\packaging\wails\bin\HashHarvest.exe
    ```
 
-2. **A `.env` file** beside `HashHarvest.exe`. Create it with this line:
+2. **A `.env` file** beside `HashHarvest.exe`. Copy [`.env.example`](.env.example) to `.env` and set the key:
 
    ```
    VT_API_KEY=your-key-here
@@ -241,7 +245,7 @@ Use the **Show** drop-down to filter by time range:
 | Last 90 days | Rolling 90-day window |
 | All time | Entire database |
 
-Select a row and click **Load Selected** to restore that scan into the main window. The results table, summary counts, export buttons, and any watchlist highlights are all populated exactly as they would be after a live scan.
+Select a row and click **View Log** to read the scan's stored log, which lists every skipped file and why. Click **Load Selected** to restore that scan into the main window. The results table, summary counts, export buttons, and any watchlist highlights are all populated exactly as they would be after a live scan.
 
 ---
 
@@ -251,13 +255,11 @@ No file is written automatically. After a scan completes (or after loading a his
 
 ### Export CSV
 
-Columns: `Absolute_Path`, `Hash_Type`, `Hash_Value`, `Line`, `Context`
+Columns: `Absolute_Path`, `Hash_Type`, `Hash_Value`, `Line`, `Context`, `Source_SHA256`. The file is UTF-8 with a byte-order mark so Excel reads it correctly. Cells that start like a spreadsheet formula get a leading `'`.
 
 ```csv
-Absolute_Path,Hash_Type,Hash_Value,Line,Context
-C:\evidence\report.pdf,MD5,44d88612fea8a8f36de82e1278abb02f,12,[page 1] Hash: 44d88612fea8a8f36de82e1278abb02f found in
-C:\evidence\alerts.log,SHA1,da39a3ee5e6b4b0d3255bfef95601890afd80709,47,process exited with hash da39a3ee5e6b4b0d3255bfef9560189
-C:\evidence\iocs.json,SHA256,e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,3,"sha256": "e3b0c44298fc1c149afbf4c8996fb924
+Absolute_Path,Hash_Type,Hash_Value,Line,Context,Source_SHA256
+C:\evidence\alerts.log,SHA1,da39a3ee5e6b4b0d3255bfef95601890afd80709,47,process exited with hash da39a3ee5e6b4b0d3255bfef95601890afd80709,6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
 ```
 
 ### Export JSON
@@ -267,18 +269,12 @@ A flat array of objects, one entry per hash found.
 ```json
 [
   {
-    "absolute_path": "C:\\evidence\\report.pdf",
-    "hash_type": "MD5",
-    "hash_value": "44d88612fea8a8f36de82e1278abb02f",
-    "line": 12,
-    "context": "[page 1] Hash: 44d88612fea8a8f36de82e1278abb02f found in"
-  },
-  {
     "absolute_path": "C:\\evidence\\alerts.log",
     "hash_type": "SHA1",
     "hash_value": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
     "line": 47,
-    "context": "process exited with hash da39a3ee5e6b4b0d3255bfef9560189"
+    "context": "process exited with hash da39a3ee5e6b4b0d3255bfef95601890afd80709",
+    "source_sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
   }
 ]
 ```
@@ -288,8 +284,88 @@ A flat array of objects, one entry per hash found.
 | `Absolute_Path` / `absolute_path` | Full filesystem path of the source file. |
 | `Hash_Type` / `hash_type` | Algorithm: `MD5`, `SHA1`, `SHA256`, or `SHA512`. |
 | `Hash_Value` / `hash_value` | Lowercase hexadecimal hash string. |
-| `Line` / `line` | Line number within the file where the hash first appears. |
-| `Context` / `context` | Surrounding text snippet; PDF/PPTX hits include a page or slide prefix. |
+| `Line` / `line` | Line number where the hash first appears; empty or `null` for file digests. For CSV, JSON, XML and Office files it counts lines of the extracted text, not of the original file. |
+| `Context` / `context` | Surrounding text; PDF and PPTX hits start with a page or slide number. |
+| `Source_SHA256` / `source_sha256` | SHA-256 of the source file as stored on disk; empty or `null` for scans saved before it was recorded. |
+
+### The manifest
+
+Every export also writes `<export>.manifest.json` next to it. It records the tool and version, the export time with its UTC offset, the export's file name, format, row count and **SHA-256**, and the scan: folder, time, mode, hash types, counts and skipped files with reasons. To check an export has not changed, compare its SHA-256 with `export.sha256` in the manifest:
+
+```powershell
+(Get-FileHash .\results.csv -Algorithm SHA256).Hash.ToLower()
+```
+
+For a scan reloaded from history, `skipped` is `null` because the list was not stored (the scan log still names each file), and `mode` is inferred from the results.
+
+---
+
+## Command Line
+
+`hashharvest-cli.exe` runs the same scan as the app. It does not save to scan history.
+
+```
+hashharvest-cli [flags] <folder>
+```
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `-mode` | `text` | `text` finds hashes in documents; `file` hashes every file. |
+| `-types` | all four | Comma-separated list, such as `MD5,SHA256`. |
+| `-format` | from `-o` | `csv` or `json`. Without it, `json` if `-o` ends in `.json`, else `csv`. |
+| `-o` | standard output | Write results to this file, plus `<file>.manifest.json`. |
+| `-force` | off | Let `-o` overwrite existing files. Without it, an existing export or manifest is never overwritten. |
+| `-version` | | Print the version. |
+
+Flags go before the folder. Skipped files are listed on standard error. No manifest is written when results go to standard output.
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Everything was scanned. |
+| `1` | The scan or writing its output failed, or it was cancelled with Ctrl+C. |
+| `2` | The command was wrong, or `-o` names an existing file. |
+| `3` | The scan finished, but something was skipped. |
+
+```powershell
+.\hashharvest-cli.exe -o results.csv C:\cases\evidence
+.\hashharvest-cli.exe -mode file -types SHA256 -o digests.json C:\cases\evidence
+```
+
+---
+
+## What Is Read and Skipped
+
+### Formats
+
+| Extension | What is searched |
+|-----------|------------------|
+| `.txt`, `.log`, `.md` | The text. UTF-8, UTF-16 (with a byte-order mark, or plainly UTF-16 without one), and otherwise Latin-1 for bytes that are not UTF-8. Any size. |
+| `.csv` | All cells, as text. |
+| `.json` | All keys and values. One JSON document, or JSON Lines. |
+| `.xml` | All element text. |
+| `.pdf` | Page text, with the page number in the context. Opens encrypted PDFs whose password is empty; skips ones that need a password. |
+| `.docx` | The document body (not headers, footers or footnotes). |
+| `.xlsx` | Text cells of every sheet (numeric cells never hold hashes). |
+| `.pptx` | Slide text (not speaker notes or masters), with the slide number in the context. |
+
+Extensions are matched without regard to case. Text mode reads only these; file mode hashes every file. A hash split across formatting runs in an Office file is rejoined. A hash is a run of exactly 32, 40, 64 or 128 hex digits, so a longer run never produces a shorter hash. The first occurrence of each hash in a file is reported.
+
+UTF-16 without a byte-order mark that is mostly non-Latin text is not detected, and neither is UTF-32.
+
+### Links
+
+Links to folders (symbolic links and junctions) are never followed. A link to a file is followed only when its target is inside the scan folder. Every link that is not followed is reported as skipped.
+
+### Limits
+
+Memory use is bounded. Anything over a limit is reported, never silently dropped.
+
+| What | Limit | Over the limit |
+|------|-------|----------------|
+| `.txt`, `.log`, `.md` | none | read in pieces |
+| `.csv`, `.json`, `.xml` | 128 MiB | scanned as plain text, noted in the status bar and scan log |
+| Office files | 256 MiB per decompressed part, 1 GiB per file | skipped |
+| PDF | 512 MiB per file; 64 MiB per decoded stream; 1 GiB of decoded streams; 100,000 forms drawn per page | skipped |
 
 ---
 
@@ -303,4 +379,6 @@ A flat array of objects, one entry per hash found.
 | `Run a scan first — there are no hashes to look up.` | Run a scan or load one from Scan History before opening VirusTotal. |
 | `QuotaExceededError` in the VirusTotal results | The API rate limit was reached. Wait, or look up fewer hashes. |
 
-For skipped files and other scan problems, check the log file listed under [Files](#files).
+| `... already exists; use -force to overwrite it` (command line) | `-o` names a file that exists. Choose another name or add `-force`. |
+
+For skipped files, click **View list**, or **View Log** in Scan History. Each log line, including the `WARNING` line for each skipped file, carries the local time and UTC offset. The log file is listed under [Files](#files).
