@@ -41,7 +41,9 @@ func within(t *testing.T, limit time.Duration, fn func()) {
 func TestPDFSelfDrawingFormFinishes(t *testing.T) {
 	form := "<< /Type /XObject /Subtype /Form /Resources << /XObject << /F 5 0 R >> >> >>\nstream\n" +
 		"BT (" + md5Hash + ") Tj ET" + strings.Repeat(" /F Do", 10) + "\nendstream"
-	within(t, 5*time.Second, func() {
+	// The capped page takes about a second (several under -race); without
+	// the cap it would take years, so a generous deadline still catches it.
+	within(t, 60*time.Second, func() {
 		_, err := pdfPageTexts(pdfWith("/F Do", form))
 		if err == nil || err.Error() != "page 1: a PDF page draws more than 100000 forms" {
 			t.Errorf("err = %v", err)
