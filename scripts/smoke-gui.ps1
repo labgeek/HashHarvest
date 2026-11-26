@@ -61,7 +61,9 @@ $proc = Start-Process -FilePath (Join-Path $work "HashHarvest.exe") -PassThru
 try {
   WaitFor "main window" { $proc.Refresh(); $proc.MainWindowHandle -ne 0 } 30 | Out-Null
   $win = $AE::FromHandle($proc.MainWindowHandle)
-  Check "window title" ($win.Current.Name -eq "HashHarvest v0.8.0 (labgeek)") $win.Current.Name
+  $versionFile = Join-Path $PSScriptRoot "..\internal\version\version.go"
+  $version = [regex]::Match((Get-Content -Raw $versionFile), 'const Version = "([^"]+)"').Groups[1].Value
+  Check "window title" ($win.Current.Name -eq "HashHarvest v$version (labgeek)") $win.Current.Name
   Check "database created next to the exe" (Test-Path (Join-Path $work "hashharvest.db")) $work
 
   # --- scan ---------------------------------------------------------------

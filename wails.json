@@ -13,7 +13,7 @@
   "info": {
     "companyName": "labgeek",
     "productName": "HashHarvest",
-    "productVersion": "0.8.0",
+    "productVersion": "1.0.0",
     "copyright": "Copyright (c) JD Durick. MIT License.",
     "comments": "Extracts cryptographic hashes from files."
   }

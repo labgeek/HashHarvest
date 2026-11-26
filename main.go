@@ -17,10 +17,11 @@ import (
 
 	"github.com/labgeek/HashHarvest/internal/applog"
 	"github.com/labgeek/HashHarvest/internal/readers"
+	releaseVersion "github.com/labgeek/HashHarvest/internal/version"
 )
 
 const (
-	version     = "0.8.0" // keep in step with wails.json
+	version     = releaseVersion.Version
 	windowTitle = "HashHarvest v" + version + " (labgeek)"
 )
 

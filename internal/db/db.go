@@ -264,11 +264,7 @@ func (d *DB) SaveScan(directory, scannedAt, hashTypes string, filesScanned, hash
 		}
 		defer stmt.Close()
 		for path, hits := range results {
-			// Same rule as the extractor: extensionless files are "FILE".
-			fileType := extractor.FileType(path)
-			if fileType == "" {
-				fileType = "FILE"
-			}
+			fileType := extractor.RowFileType(path)
 			for _, hit := range hits {
 				var line, source any // NULL when there is no line number or source hash
 				if hit.Line != 0 {
