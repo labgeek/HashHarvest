@@ -1,0 +1,5 @@
+# SYNTHETIC watchlist for samples/evidence. Import it in the app with
+# Watchlist -> New -> Browse File. These are not real indicators.
+dropper,f8525390bb78cc22440b998c9eee2c3c53577eb4bc57c0208e849b3434175e0a
+loader,95d1f7f5cbdd98d9a586db1bd182c614d78521d9e5ec8b8ae5a0de49958e2bea
+implant,f60a505038ad207913d1c57363180711d31f695e257f8c30760cddd37e54e6a1b87a3b9735e9bb7a26a9075faa64271feefaa7ba7390fef95de1121ca93f0670

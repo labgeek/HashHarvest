@@ -157,7 +157,7 @@ func TestScanSavesHistoryHighlightsWatchlistAndExports(t *testing.T) {
 	}
 	summary := f.payloads["scan:finished"][0].(Summary)
 	want := Summary{FilesScanned: 3, HashesFound: 3, SkippedFiles: 1,
-		Skipped: []SkippedFile{{filepath.Join(dir, "bad.json"), "invalid JSON"}},
+		Skipped: []SkippedFile{{Path: filepath.Join(dir, "bad.json"), Reason: "invalid JSON"}},
 		Status:  "Scan complete — saved to database. — ⚠ 2 watchlist hits", Matches: []string{md5Hash}}
 	if !reflect.DeepEqual(summary, want) {
 		t.Errorf("summary = %+v", summary)
@@ -475,7 +475,7 @@ func TestLoadDotenv(t *testing.T) {
 
 func TestInfo(t *testing.T) {
 	info := (&App{}).Info()
-	if info.Title != "HashHarvest v0.8.0 (labgeek)" || info.Version != "v0.8.0" || !strings.HasPrefix(info.BuildDate, "Latest build date: ") {
+	if info.Title != "HashHarvest v"+version+" (labgeek)" || info.Version != "v"+version || !strings.HasPrefix(info.BuildDate, "Latest build date: ") {
 		t.Errorf("info = %+v", info)
 	}
 }
@@ -535,8 +535,8 @@ func TestCancelScan(t *testing.T) {
 	}
 }
 
-// manifest is the sidecar written next to every export.
-type manifest struct {
+// manifestDoc is the sidecar written next to every export.
+type manifestDoc struct {
 	Tool       string `json:"tool"`
 	Version    string `json:"version"`
 	ExportedAt string `json:"exported_at"`
@@ -558,13 +558,13 @@ type manifest struct {
 	} `json:"scan"`
 }
 
-func readManifest(t *testing.T, export string) manifest {
+func readManifest(t *testing.T, export string) manifestDoc {
 	t.Helper()
 	data, err := os.ReadFile(export + ".manifest.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var m manifest
+	var m manifestDoc
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("%v in %s", err, data)
 	}
@@ -596,7 +596,7 @@ func TestExportsWriteAManifest(t *testing.T) {
 	s := m.Scan
 	if s.Folder != dir || !zoned.MatchString(s.ScannedAt) || s.Mode != "text" || !reflect.DeepEqual(s.HashTypes, []string{"MD5", "SHA1"}) ||
 		s.FilesScanned != 2 || s.HashesFound != 2 || s.SkippedFiles != 1 ||
-		s.Skipped == nil || !reflect.DeepEqual(*s.Skipped, []SkippedFile{{filepath.Join(dir, "bad.json"), "invalid JSON"}}) {
+		s.Skipped == nil || !reflect.DeepEqual(*s.Skipped, []SkippedFile{{Path: filepath.Join(dir, "bad.json"), Reason: "invalid JSON"}}) {
 		t.Errorf("scan: %+v", s)
 	}
 	if !strings.Contains(f.lastMessage(), out+".manifest.json") {

@@ -12,14 +12,12 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/labgeek/HashHarvest/internal/db"
 	"github.com/labgeek/HashHarvest/internal/extractor"
-	"github.com/labgeek/HashHarvest/internal/keystore"
+	"github.com/labgeek/HashHarvest/internal/manifest"
 	"github.com/labgeek/HashHarvest/internal/readers"
 	"github.com/labgeek/HashHarvest/internal/scanner"
-	"github.com/labgeek/HashHarvest/internal/vt"
 )
 
 // Dialog kinds, matching Wails' runtime.DialogType values.
@@ -50,7 +48,7 @@ type App struct {
 
 	mu         sync.Mutex
 	results    extractor.Results // current scan results, the source for exports and VirusTotal
-	scan       scanInfo          // the scan behind results, for export manifests
+	scan       manifest.Scan     // the scan behind results, for export manifests
 	scanCancel context.CancelCauseFunc
 	scanDone   chan struct{}
 	vtCancel   context.CancelFunc
@@ -132,17 +130,11 @@ type Summary struct {
 	Skipped []SkippedFile `json:"skipped,omitempty"`
 }
 
-// SkippedFile is a file or folder a scan could not read, and why.
-type SkippedFile struct {
-	Path   string `json:"path"`
-	Reason string `json:"reason"`
-}
-
 // ResetResults forgets the current results (the window's Clear Form and
 // the start of each scan).
 func (a *App) ResetResults() {
 	a.mu.Lock()
-	a.results, a.scan = extractor.Results{}, scanInfo{}
+	a.results, a.scan = extractor.Results{}, manifest.Scan{}
 	a.mu.Unlock()
 }
 
@@ -251,13 +243,13 @@ func (a *App) runScan(ctx context.Context, directory, mode string, hashTypes []s
 		SkippedFiles: result.SkippedFiles(),
 	}
 	for _, e := range result.Errors {
-		summary.Skipped = append(summary.Skipped, SkippedFile{e.Path, e.Message})
+		summary.Skipped = append(summary.Skipped, SkippedFile{Path: e.Path, Reason: e.Message})
 	}
 	types := append([]string(nil), hashTypes...)
 	sort.Strings(types)
 	scannedAt := db.NowISO()
 	skipped := append([]SkippedFile{}, summary.Skipped...)
-	info := scanInfo{Folder: directory, ScannedAt: scannedAt, Mode: mode, HashTypes: types,
+	info := manifest.Scan{Folder: directory, ScannedAt: scannedAt, Mode: mode, HashTypes: types,
 		FilesScanned: summary.FilesScanned, HashesFound: summary.HashesFound, SkippedFiles: summary.SkippedFiles,
 		Skipped: &skipped}
 	if d, err := a.database(); err != nil {
@@ -275,427 +267,6 @@ func (a *App) runScan(ctx context.Context, directory, mode string, hashTypes []s
 	a.mu.Unlock()
 	a.ui.emit("scan:finished", summary)
 	a.ui.message(dlgInfo, "Scan Complete", "Scan complete. Use Export CSV or Export JSON to save results.")
-}
-
-// watchlistHits returns the scan's hash values that are on a watchlist and
-// the status line with the hit count appended. A failed lookup is ignored,
-// as in the Python app.
-func (a *App) watchlistHits(d *db.DB, scanID int64, results extractor.Results, status string) ([]string, string) {
-	matches, err := d.GetScanMatches(scanID)
-	if err != nil || len(matches) == 0 {
-		return []string{}, status
-	}
-	values := make([]string, 0, len(matches))
-	for v := range matches {
-		values = append(values, v)
-	}
-	sort.Strings(values)
-	rows := 0 // table rows, so a hash seen in two files counts twice
-	for _, hits := range results {
-		for _, h := range hits {
-			if matches[h.HashValue] {
-				rows++
-			}
-		}
-	}
-	if rows > 0 {
-		status += fmt.Sprintf(" — ⚠ %d watchlist hit%s", rows, plural(rows, "s"))
-	}
-	return values, status
-}
-
-func plural(n int, suffix string) string {
-	if n != 1 {
-		return suffix
-	}
-	return ""
-}
-
-// timeRanges are the Scan History choices; -1 days means all time.
-var timeRanges = []struct {
-	Label string
-	Days  int
-}{{"Today", 0}, {"Last 7 days", 7}, {"Last 30 days", 30}, {"Last 90 days", 90}, {"All time", -1}}
-
-// TimeRanges lists the Scan History filter labels; index 2 is the default.
-func (a *App) TimeRanges() []string {
-	labels := make([]string, len(timeRanges))
-	for i, r := range timeRanges {
-		labels[i] = r.Label
-	}
-	return labels
-}
-
-// since returns the ISO lower bound for a time-range index ("" = all time).
-// Like Python's naive datetime arithmetic, "N days ago" keeps the wall-clock
-// time across daylight-saving changes.
-func since(index int, now time.Time) string {
-	if index < 0 || index >= len(timeRanges) || timeRanges[index].Days < 0 {
-		return ""
-	}
-	if days := timeRanges[index].Days; days > 0 {
-		return db.ISO(now.AddDate(0, 0, -days))
-	}
-	return db.ISO(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()))
-}
-
-// HistoryRow is one line of the Scan History table.
-type HistoryRow struct {
-	ID        int64  `json:"id"`
-	When      string `json:"when"`
-	Directory string `json:"directory"`
-	Files     int    `json:"files"`
-	Hashes    int    `json:"hashes"`
-}
-
-// GetScans lists stored scans for a time-range index, newest first.
-func (a *App) GetScans(rangeIndex int) ([]HistoryRow, error) {
-	d, err := a.database()
-	if err != nil {
-		return nil, err
-	}
-	scans, err := d.GetScans(since(rangeIndex, time.Now()))
-	if err != nil {
-		return nil, err
-	}
-	rows := make([]HistoryRow, len(scans))
-	for i, s := range scans {
-		when := []rune(strings.Replace(s.ScannedAt, "T", " ", 1))
-		if len(when) > 16 {
-			when = when[:16]
-		}
-		rows[i] = HistoryRow{s.ID, string(when), s.Directory, s.FilesScanned, s.HashesFound}
-	}
-	return rows, nil
-}
-
-// LoadScan makes a stored scan the current result set and returns its rows
-// for the results table.
-func (a *App) LoadScan(scanID int64) (*Summary, error) {
-	d, err := a.database()
-	if err != nil {
-		return nil, err
-	}
-	scans, err := d.GetScans("")
-	if err != nil {
-		return nil, err
-	}
-	var scan *db.Scan
-	for i := range scans {
-		if scans[i].ID == scanID {
-			scan = &scans[i]
-		}
-	}
-	if scan == nil {
-		return nil, fmt.Errorf("scan %d not found", scanID)
-	}
-	stored, err := d.GetResults(scanID)
-	if err != nil {
-		return nil, err
-	}
-
-	results := extractor.Results{}
-	rows := make([]Row, len(stored))
-	for i, r := range stored {
-		// A missing line number stays missing (file-digest rows), so exports
-		// of a reloaded scan match those of the live scan.
-		results[r.FilePath] = append(results[r.FilePath], extractor.Hit{
-			HashType: r.HashType, HashValue: r.HashValue, Line: r.Line, Context: r.Context,
-			SourceSHA256: r.SourceSHA256})
-		rows[i] = Row{r.FilePath, r.FileType, r.HashType, r.HashValue, r.Line, r.Context}
-	}
-	for _, hits := range results {
-		extractor.SortHits(hits)
-	}
-
-	day := []rune(scan.ScannedAt)
-	if len(day) > 10 {
-		day = day[:10]
-	}
-	summary := &Summary{
-		FilesScanned: scan.FilesScanned,
-		HashesFound:  len(rows),
-		SkippedFiles: scan.SkippedFiles,
-		Rows:         rows,
-	}
-	summary.Matches, summary.Status = a.watchlistHits(d, scanID, results,
-		fmt.Sprintf("Historical scan from %s loaded.", string(day)))
-
-	a.mu.Lock()
-	a.results = results
-	a.scan = scanInfo{Folder: scan.Directory, ScannedAt: scan.ScannedAt, Mode: modeOf(results),
-		HashTypes: splitTypes(scan.HashTypes), FilesScanned: scan.FilesScanned, HashesFound: len(rows),
-		SkippedFiles: scan.SkippedFiles} // the skip list itself is only in the stored log
-	a.mu.Unlock()
-	return summary, nil
-}
-
-// GetScanLog returns the log stored with a scan, which names every skipped
-// file and why.
-func (a *App) GetScanLog(scanID int64) (string, error) {
-	d, err := a.database()
-	if err != nil {
-		return "", err
-	}
-	log, ok, err := d.GetScanLog(scanID)
-	if err != nil {
-		return "", err
-	}
-	if !ok {
-		return "", fmt.Errorf("no log is stored for scan %d", scanID)
-	}
-	return log, nil
-}
-
-// WatchlistItem is one entry of the Watchlist Manager list.
-type WatchlistItem struct {
-	ID    int64  `json:"id"`
-	Label string `json:"label"`
-}
-
-// GetWatchlists lists watchlists by name with their entry counts.
-func (a *App) GetWatchlists() ([]WatchlistItem, error) {
-	d, err := a.database()
-	if err != nil {
-		return nil, err
-	}
-	lists, err := d.GetWatchlists()
-	if err != nil {
-		return nil, err
-	}
-	items := make([]WatchlistItem, len(lists))
-	for i, w := range lists {
-		items[i] = WatchlistItem{w.ID, fmt.Sprintf("%s  (%d hash%s)", w.Name, w.EntryCount, plural(w.EntryCount, "es"))}
-	}
-	return items, nil
-}
-
-// CreateWatchlist creates a watchlist; a blank name is ignored.
-func (a *App) CreateWatchlist(name string) error {
-	name = readers.PyStrip(name)
-	if name == "" {
-		return nil
-	}
-	d, err := a.database()
-	if err != nil {
-		return err
-	}
-	_, err = d.CreateWatchlist(name)
-	return err
-}
-
-// DeleteWatchlist asks for confirmation, then deletes the watchlist and
-// its entries. It reports whether anything was deleted.
-func (a *App) DeleteWatchlist(id int64) (bool, error) {
-	d, err := a.database()
-	if err != nil {
-		return false, err
-	}
-	lists, err := d.GetWatchlists()
-	if err != nil {
-		return false, err
-	}
-	for _, w := range lists {
-		if w.ID != id {
-			continue
-		}
-		answer := a.ui.message(dlgQuestion, "Delete Watchlist",
-			fmt.Sprintf("Delete \"%s\" and all %d of its entries?", w.Name, w.EntryCount))
-		if answer != "Yes" {
-			return false, nil
-		}
-		return true, d.DeleteWatchlist(id)
-	}
-	return false, nil
-}
-
-// ImportResult is the Watchlist Manager's status line after an import;
-// Clear tells the window to empty the paste area.
-type ImportResult struct {
-	Status string `json:"status"`
-	Clear  bool   `json:"clear"`
-}
-
-// ImportText imports every hash found in pasted text into a watchlist.
-func (a *App) ImportText(watchlistID int64, text string) ImportResult {
-	if watchlistID <= 0 {
-		return ImportResult{Status: "Select a watchlist first."}
-	}
-	if readers.PyStrip(text) == "" {
-		return ImportResult{Status: "Nothing to import."}
-	}
-	return ImportResult{Status: a.importHashes(watchlistID, text, "paste"), Clear: true}
-}
-
-// ImportFile asks for a file and imports every hash found in it. An empty
-// status means the picker was cancelled.
-func (a *App) ImportFile(watchlistID int64) string {
-	if watchlistID <= 0 {
-		return "Select a watchlist first."
-	}
-	path, err := a.ui.openFile("Import Hashes From File")
-	if err != nil || path == "" {
-		return ""
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "Could not read file: " + err.Error()
-	}
-	return a.importHashes(watchlistID, readers.DecodeTextReplace(data), filepath.Base(path))
-}
-
-func (a *App) importHashes(watchlistID int64, text, source string) string {
-	hashes := extractor.HashSet(text)
-	if len(hashes) == 0 {
-		return fmt.Sprintf("No valid hashes found in %s.", source)
-	}
-	d, err := a.database()
-	if err != nil {
-		return "Import failed: " + err.Error()
-	}
-	added, err := d.ImportHashes(watchlistID, hashes)
-	if err != nil {
-		return "Import failed: " + err.Error()
-	}
-	return fmt.Sprintf("Added %d new hash%s from %s (%d already present).",
-		added, plural(added, "es"), source, len(hashes)-added)
-}
-
-// VTState is what the VirusTotal dialog shows when it opens.
-type VTState struct {
-	OK                bool     `json:"ok"`
-	Hashes            []string `json:"hashes"`
-	APIKey            string   `json:"apiKey"`
-	FromEnv           bool     `json:"fromEnv"`
-	KeychainAvailable bool     `json:"keychainAvailable"`
-	KeyInKeychain     bool     `json:"keyInKeychain"`
-}
-
-// OpenVirusTotal returns the dialog state for the current results' unique
-// hashes, or OK=false (after telling the user) when there are none.
-func (a *App) OpenVirusTotal() VTState {
-	a.mu.Lock()
-	seen := map[string]bool{}
-	for _, hits := range a.results {
-		for _, h := range hits {
-			seen[strings.ToLower(h.HashValue)] = true
-		}
-	}
-	a.mu.Unlock()
-	if len(seen) == 0 {
-		a.ui.message(dlgInfo, "VirusTotal", "Run a scan first — there are no hashes to look up.")
-		return VTState{}
-	}
-	hashes := make([]string, 0, len(seen))
-	for h := range seen {
-		hashes = append(hashes, h)
-	}
-	sort.Strings(hashes)
-	return VTState{
-		OK:                true,
-		Hashes:            hashes,
-		APIKey:            keystore.LoadKey(),
-		FromEnv:           os.Getenv("VT_API_KEY") != "",
-		KeychainAvailable: keystore.KeychainAvailable(),
-		KeyInKeychain:     keystore.KeyInKeychain(),
-	}
-}
-
-// StartLookup saves the key (unless it came from VT_API_KEY) and looks the
-// hashes up in the background, reporting vt:* events.
-func (a *App) StartLookup(apiKey string, secure bool, hashes []string) bool {
-	apiKey = readers.PyStrip(apiKey)
-	if apiKey == "" {
-		a.ui.message(dlgWarning, "VirusTotal", "Enter your VirusTotal API key.")
-		return false
-	}
-	if os.Getenv("VT_API_KEY") == "" {
-		if _, err := keystore.SaveKey(apiKey, secure); err != nil {
-			a.ui.message(dlgWarning, "VirusTotal",
-				fmt.Sprintf("Could not save the key: %s\nUsing it for this session only.", err))
-		}
-	}
-
-	a.mu.Lock()
-	if a.vtDone != nil {
-		a.mu.Unlock()
-		return false
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	a.vtCancel, a.vtDone = cancel, done
-	a.mu.Unlock()
-
-	go func() {
-		defer func() {
-			a.mu.Lock()
-			a.vtCancel, a.vtDone = nil, nil
-			a.mu.Unlock()
-			cancel()
-			close(done)
-		}()
-		_, err := vt.LookupHashes(ctx, apiKey, hashes,
-			func(p int) { a.ui.emit("vt:progress", p) },
-			func(hash, verdict, detail string) {
-				a.ui.emit("vt:result", map[string]string{"hash": hash, "verdict": verdict, "detail": detail})
-			})
-		switch {
-		case ctx.Err() != nil:
-			// The dialog was closed; nobody is listening.
-		case err != nil:
-			a.ui.emit("vt:done", nil)
-			a.ui.message(dlgError, "VirusTotal Error", err.Error())
-		default:
-			a.ui.emit("vt:done", nil)
-		}
-	}()
-	return true
-}
-
-// CancelLookup stops a running lookup and waits for it to finish. The
-// VirusTotal dialog calls it when it closes.
-func (a *App) CancelLookup() {
-	a.mu.Lock()
-	cancel, done := a.vtCancel, a.vtDone
-	a.mu.Unlock()
-	if cancel != nil {
-		cancel()
-		<-done
-	}
-}
-
-// OpenKeyPage opens the VirusTotal API-key page in the browser.
-func (a *App) OpenKeyPage() { a.ui.openURL("https://www.virustotal.com/gui/my-apikey") }
-
-// ExportCSV asks for a path and writes the current results as CSV. It
-// returns the new status line, or "" when nothing changed.
-func (a *App) ExportCSV() string {
-	return a.export("CSV", "hashOutput.csv", "CSV Files (*.csv)", "*.csv", extractor.ExportCSV)
-}
-
-// ExportJSON asks for a path and writes the current results as JSON.
-func (a *App) ExportJSON() string {
-	return a.export("JSON", "hashOutput.json", "JSON Files (*.json)", "*.json", extractor.ExportJSON)
-}
-
-func (a *App) export(format, defaultName, filterName, pattern string, write func(string, extractor.Results) error) string {
-	path, err := a.ui.saveFile("Export "+format, defaultName, filterName, pattern)
-	if err != nil || path == "" {
-		return ""
-	}
-	a.mu.Lock()
-	results, scan := a.results, a.scan
-	a.mu.Unlock()
-	if err := write(path, results); err != nil {
-		a.ui.message(dlgError, "Export Error", fmt.Sprintf("Could not save %s: %s", format, err))
-		return ""
-	}
-	if err := writeManifest(path, format, results, scan); err != nil {
-		a.ui.message(dlgWarning, "Export Complete", fmt.Sprintf("%s saved to:\n%s\n\nThe manifest could not be written: %s", format, path, err))
-		return fmt.Sprintf("Exported %s: %s (no manifest)", format, path)
-	}
-	a.ui.message(dlgInfo, "Export Complete", fmt.Sprintf("%s saved to:\n%s\n\nManifest:\n%s", format, path, manifestPath(path)))
-	return fmt.Sprintf("Exported %s: %s", format, path)
 }
 
 // shutdown stops any running scan or lookup and waits for it, so the

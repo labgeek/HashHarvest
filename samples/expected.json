@@ -1,0 +1,93 @@
+{
+ "results": [
+  {
+   "file": "asset-list.xlsx",
+   "hash_type": "SHA1",
+   "hash_value": "ee14abb223ae9b94b7014a52e60a4948b00b92bc"
+  },
+  {
+   "file": "briefing.pptx",
+   "hash_type": "SHA256",
+   "hash_value": "1c22d34d2b06e2535cb60f6476b132c9d6d6719e4514127be269c938fb8adf1d"
+  },
+  {
+   "file": "edr-alerts.csv",
+   "hash_type": "SHA256",
+   "hash_value": "0a90170c0e2f8ac6ecfda676c374e8cddf3dc192da2389f3fedb8aa6a2198f7b"
+  },
+  {
+   "file": "edr-alerts.csv",
+   "hash_type": "SHA256",
+   "hash_value": "95d1f7f5cbdd98d9a586db1bd182c614d78521d9e5ec8b8ae5a0de49958e2bea"
+  },
+  {
+   "file": "events.json",
+   "hash_type": "SHA1",
+   "hash_value": "df9b644620e4c33daf331f36a7ed687bec5c8947"
+  },
+  {
+   "file": "incident-notes.txt",
+   "hash_type": "MD5",
+   "hash_value": "c6505fe29a9864303a2b9ac16fcecb9d"
+  },
+  {
+   "file": "incident-notes.txt",
+   "hash_type": "SHA1",
+   "hash_value": "9bc87125beb723f26a4f5265df75f8e8ea35de06"
+  },
+  {
+   "file": "iocs.json",
+   "hash_type": "MD5",
+   "hash_value": "df2a858b19133a1358fe0ec0f3a365a7"
+  },
+  {
+   "file": "iocs.json",
+   "hash_type": "SHA256",
+   "hash_value": "f8525390bb78cc22440b998c9eee2c3c53577eb4bc57c0208e849b3434175e0a"
+  },
+  {
+   "file": "lure-document.docx",
+   "hash_type": "MD5",
+   "hash_value": "e29cb686eab62e121ce01b52bddd59ae"
+  },
+  {
+   "file": "network/proxy.log",
+   "hash_type": "SHA1",
+   "hash_value": "df9b644620e4c33daf331f36a7ed687bec5c8947"
+  },
+  {
+   "file": "network/proxy.log",
+   "hash_type": "SHA256",
+   "hash_value": "f8525390bb78cc22440b998c9eee2c3c53577eb4bc57c0208e849b3434175e0a"
+  },
+  {
+   "file": "powershell-export-utf16.log",
+   "hash_type": "SHA256",
+   "hash_value": "68c0b9fe3d72673d5567ee335212d77eeda15cfc94593d790c5e23eb82c6b842"
+  },
+  {
+   "file": "scanner-config.xml",
+   "hash_type": "MD5",
+   "hash_value": "df2a858b19133a1358fe0ec0f3a365a7"
+  },
+  {
+   "file": "threat-report.pdf",
+   "hash_type": "MD5",
+   "hash_value": "69b5b1764f0ec88667d4a5d13775c62b"
+  },
+  {
+   "file": "triage.md",
+   "hash_type": "SHA256",
+   "hash_value": "95d1f7f5cbdd98d9a586db1bd182c614d78521d9e5ec8b8ae5a0de49958e2bea"
+  },
+  {
+   "file": "triage.md",
+   "hash_type": "SHA512",
+   "hash_value": "f60a505038ad207913d1c57363180711d31f695e257f8c30760cddd37e54e6a1b87a3b9735e9bb7a26a9075faa64271feefaa7ba7390fef95de1121ca93f0670"
+  }
+ ],
+ "skipped": [
+  "damaged.docx"
+ ],
+ "watchlist_hits": 5
+}

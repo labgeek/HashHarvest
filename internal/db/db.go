@@ -115,7 +115,7 @@ type Watchlist struct {
 }
 
 // DB is a handle on one database file. No connection is held between
-// calls: like the Python implementation, each operation opens the file,
+// calls: each operation opens the file,
 // runs in one transaction, and closes it, so the file is never left locked.
 type DB struct{ path string }
 
@@ -264,11 +264,7 @@ func (d *DB) SaveScan(directory, scannedAt, hashTypes string, filesScanned, hash
 		}
 		defer stmt.Close()
 		for path, hits := range results {
-			// Same rule as the extractor: extensionless files are "FILE".
-			fileType := extractor.FileType(path)
-			if fileType == "" {
-				fileType = "FILE"
-			}
+			fileType := extractor.RowFileType(path)
 			for _, hit := range hits {
 				var line, source any // NULL when there is no line number or source hash
 				if hit.Line != 0 {

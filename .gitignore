@@ -13,6 +13,7 @@ onfile/
 scripts/*
 !scripts/check.ps1
 !scripts/smoke-gui.ps1
+!scripts/package-release.ps1
 
 docs/
 
@@ -23,3 +24,6 @@ frontend/wailsjs/
 *-res.syso
 # frontend/dist is the Wails UI source (embedded by main.go), not a build output
 !frontend/dist/
+
+# Release packaging output
+dist/

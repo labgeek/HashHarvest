@@ -47,7 +47,7 @@ if ($gcc -and (gcc -dumpmachine) -match "x86_64") {
 $env:CGO_ENABLED = "0"
 foreach ($target in "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64") {
   $env:GOOS, $env:GOARCH = $target.Split("/")
-  Step "cross-compile internal/... for $target" { go build ./internal/... }
+  Step "cross-compile internal and cmd for $target" { go build ./internal/... ./cmd/... }
 }
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
 
