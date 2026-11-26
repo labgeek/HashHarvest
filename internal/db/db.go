@@ -15,7 +15,7 @@ import (
 
 // SchemaVersion is tracked in SQLite's PRAGMA user_version. Bump it and add
 // a step to migrations whenever the schema changes.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 const hashResultsTable = `(
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +71,14 @@ var migrations = map[int]func(*sql.Tx) error{
 		_, err = tx.Exec("ALTER TABLE scans ADD COLUMN log TEXT")
 		return err
 	},
+	3: func(tx *sql.Tx) error { // record which file bytes each hash came from
+		cols, err := columns(tx, "hash_results")
+		if err != nil || cols["source_sha256"] {
+			return err
+		}
+		_, err = tx.Exec("ALTER TABLE hash_results ADD COLUMN source_sha256 TEXT")
+		return err
+	},
 }
 
 // Scan is one row of scan history.
@@ -84,8 +92,8 @@ type Scan struct {
 	SkippedFiles int    `json:"skipped_files"`
 }
 
-// ResultRow is one stored hash. Line is 0 and Context "" where the
-// database holds NULL.
+// ResultRow is one stored hash. Line is 0, and Context and SourceSHA256
+// are "", where the database holds NULL.
 type ResultRow struct {
 	FilePath  string `json:"file_path"`
 	FileType  string `json:"file_type"`
@@ -93,6 +101,9 @@ type ResultRow struct {
 	HashValue string `json:"hash_value"`
 	Line      int    `json:"line_number"`
 	Context   string `json:"context"`
+	// SourceSHA256 is the SHA-256 of the source file (NULL in rows stored
+	// before schema version 3).
+	SourceSHA256 string `json:"source_sha256"`
 }
 
 // Watchlist is a named list of known-bad hashes.
@@ -246,8 +257,8 @@ func (d *DB) SaveScan(directory, scannedAt, hashTypes string, filesScanned, hash
 		}
 		stmt, err := tx.Prepare(
 			"INSERT OR IGNORE INTO hash_results " +
-				"(scan_id, file_path, file_type, hash_type, hash_value, line_number, context) " +
-				"VALUES (?,?,?,?,?,?,?)")
+				"(scan_id, file_path, file_type, hash_type, hash_value, line_number, context, source_sha256) " +
+				"VALUES (?,?,?,?,?,?,?,?)")
 		if err != nil {
 			return err
 		}
@@ -259,11 +270,14 @@ func (d *DB) SaveScan(directory, scannedAt, hashTypes string, filesScanned, hash
 				fileType = "FILE"
 			}
 			for _, hit := range hits {
-				var line any // NULL when there is no line number
+				var line, source any // NULL when there is no line number or source hash
 				if hit.Line != 0 {
 					line = hit.Line
 				}
-				if _, err := stmt.Exec(scanID, path, fileType, hit.HashType, hit.HashValue, line, hit.Context); err != nil {
+				if hit.SourceSHA256 != "" {
+					source = hit.SourceSHA256
+				}
+				if _, err := stmt.Exec(scanID, path, fileType, hit.HashType, hit.HashValue, line, hit.Context, source); err != nil {
 					return err
 				}
 			}
@@ -308,7 +322,7 @@ func (d *DB) GetResults(scanID int64) ([]ResultRow, error) {
 	results := []ResultRow{}
 	err := d.tx(func(tx *sql.Tx) error {
 		rows, err := tx.Query(
-			"SELECT file_path, file_type, hash_type, hash_value, line_number, context "+
+			"SELECT file_path, file_type, hash_type, hash_value, line_number, context, source_sha256 "+
 				"FROM hash_results WHERE scan_id=? ORDER BY file_path, hash_type", scanID)
 		if err != nil {
 			return err
@@ -317,11 +331,11 @@ func (d *DB) GetResults(scanID int64) ([]ResultRow, error) {
 		for rows.Next() {
 			var r ResultRow
 			var line sql.NullInt64
-			var context sql.NullString
-			if err := rows.Scan(&r.FilePath, &r.FileType, &r.HashType, &r.HashValue, &line, &context); err != nil {
+			var context, source sql.NullString
+			if err := rows.Scan(&r.FilePath, &r.FileType, &r.HashType, &r.HashValue, &line, &context, &source); err != nil {
 				return err
 			}
-			r.Line, r.Context = int(line.Int64), context.String
+			r.Line, r.Context, r.SourceSHA256 = int(line.Int64), context.String, source.String
 			results = append(results, r)
 		}
 		return rows.Err()

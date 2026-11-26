@@ -394,7 +394,8 @@ func (a *App) LoadScan(scanID int64) (*Summary, error) {
 		// A missing line number stays missing (file-digest rows), so exports
 		// of a reloaded scan match those of the live scan.
 		results[r.FilePath] = append(results[r.FilePath], extractor.Hit{
-			HashType: r.HashType, HashValue: r.HashValue, Line: r.Line, Context: r.Context})
+			HashType: r.HashType, HashValue: r.HashValue, Line: r.Line, Context: r.Context,
+			SourceSHA256: r.SourceSHA256})
 		rows[i] = Row{r.FilePath, r.FileType, r.HashType, r.HashValue, r.Line, r.Context}
 	}
 	for _, hits := range results {

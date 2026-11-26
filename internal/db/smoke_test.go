@@ -33,7 +33,7 @@ func TestSmokeDatabase(t *testing.T) {
 		from pragma_user_version`).Scan(&rows, &version); err != nil {
 		t.Fatal(err)
 	}
-	if rows != 3 || version != 2 {
-		t.Errorf("stored rows = %d, schema version = %d; want 3 and 2", rows, version)
+	if rows != 3 || version != SchemaVersion {
+		t.Errorf("stored rows = %d, schema version = %d; want 3 and %d", rows, version, SchemaVersion)
 	}
 }

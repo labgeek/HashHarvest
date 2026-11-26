@@ -14,6 +14,7 @@ import (
 	"hash"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -27,6 +28,9 @@ type Hit struct {
 	HashValue string
 	Line      int
 	Context   string
+	// SourceSHA256 is the SHA-256 of the file the hash came from, as read
+	// from disk ("" for rows stored before it was recorded).
+	SourceSHA256 string
 }
 
 // Results maps each file path to its hits, sorted by hash type then value.
@@ -112,12 +116,18 @@ func joinPath(dir, name string) string {
 var readDir = os.ReadDir
 
 // walkFiles lists every non-directory entry below root, sorted. Links to
-// directories are not followed. A subdirectory that cannot be listed is
-// returned as a FileError, so its contents are reported as missed rather
-// than silently absent; a root that cannot be listed is an error.
+// folders (symlinks, junctions) are never followed, and a link to a file is
+// followed only when its target is inside root, so a scan cannot reach
+// outside the folder it names. Each link not followed, and each subfolder
+// that cannot be listed, is returned as a FileError, so it is reported
+// rather than silently absent; a root that cannot be listed is an error.
 func walkFiles(root string, keep func(name string) bool) ([]string, []FileError, error) {
 	var paths []string
 	var dirErrors []FileError
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		realRoot = root // readDir reports the problem
+	}
 	var walk func(string) error
 	walk = func(dir string) error {
 		entries, err := readDir(dir)
@@ -136,12 +146,21 @@ func walkFiles(root string, keep func(name string) bool) ([]string, []FileError,
 			}
 			if !entry.Type().IsRegular() {
 				if info, err := os.Stat(path); err == nil && info.IsDir() {
-					continue // symlink or junction to a directory
+					dirErrors = append(dirErrors, FileError{path, "link to a folder is not followed"})
+					continue
 				}
 			}
-			if keep == nil || keep(entry.Name()) {
-				paths = append(paths, path)
+			if keep != nil && !keep(entry.Name()) {
+				continue
 			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				// A broken link resolves to nothing; reading it reports it.
+				if target, err := filepath.EvalSymlinks(path); err == nil && !within(realRoot, target) {
+					dirErrors = append(dirErrors, FileError{path, "link points outside the scan folder: " + target})
+					continue
+				}
+			}
+			paths = append(paths, path)
 		}
 		return nil
 	}
@@ -150,6 +169,12 @@ func walkFiles(root string, keep func(name string) bool) ([]string, []FileError,
 	}
 	sort.Strings(paths)
 	return paths, dirErrors, nil
+}
+
+// within reports whether path is root or below it.
+func within(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // skipped records a file or directory the scan could not read.
@@ -232,11 +257,19 @@ func digestFile(ctx context.Context, path string, types []string) ([]Hit, error)
 	var names []string
 	var writers []io.Writer
 	var digests []hash.Hash
+	var source hash.Hash // SHA-256, for SourceSHA256 even when not selected
 	for _, name := range HashTypes {
 		if selected(types, name) {
 			h := constructors[name]()
 			names, digests, writers = append(names, name), append(digests, h), append(writers, h)
+			if name == "SHA256" {
+				source = h
+			}
 		}
+	}
+	if source == nil {
+		source = sha256.New()
+		writers = append(writers, source)
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -246,9 +279,11 @@ func digestFile(ctx context.Context, path string, types []string) ([]Hit, error)
 	if _, err := io.Copy(io.MultiWriter(writers...), ctxReader{ctx, f}); err != nil {
 		return nil, err
 	}
+	sourceSHA256 := hex.EncodeToString(source.Sum(nil))
 	hits := []Hit{}
 	for i, name := range names {
-		hits = append(hits, Hit{name, hex.EncodeToString(digests[i].Sum(nil)), 0, "file digest"})
+		hits = append(hits, Hit{HashType: name, HashValue: hex.EncodeToString(digests[i].Sum(nil)),
+			Context: "file digest", SourceSHA256: sourceSHA256})
 	}
 	return hits, nil
 }
@@ -305,9 +340,16 @@ func extractFile(ctx context.Context, path string, types []string) (hits []Hit, 
 	if err := requireRegularFile(path); err != nil {
 		return nil, "", err
 	}
+	// ponytail: a separate read, so the hash is of the bytes exactly as on
+	// disk whatever the reader does; hash while reading if I/O ever matters.
+	sourceSHA256, err := fileSHA256(ctx, path)
+	if err != nil {
+		return nil, "", err
+	}
 	hits = []Hit{}
 	seen := map[[2]string]bool{}
 	add := func(hit Hit, location string) {
+		hit.SourceSHA256 = sourceSHA256
 		key := [2]string{hit.HashType, hit.HashValue}
 		if seen[key] {
 			return
@@ -343,6 +385,20 @@ func extractFile(ctx context.Context, path string, types []string) (hits []Hit, 
 	}
 	SortHits(hits)
 	return hits, "", nil
+}
+
+// fileSHA256 hashes a file's bytes, stopping when ctx is cancelled.
+func fileSHA256(ctx context.Context, path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, ctxReader{ctx, f}); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // SortHits orders hits by hash type, then value, the order every export uses.

@@ -223,8 +223,9 @@ func TestLoadScanRestoresResultsWithNullLines(t *testing.T) {
 	results := extractor.Results{
 		"C:/ev/no_extension": {{HashType: "MD5", HashValue: strings.Repeat("c", 32), Context: "file digest"}},
 		"C:/ev/a.txt": {
-			{HashType: "SHA1", HashValue: strings.Repeat("e", 40), Line: 4, Context: "x"},
-			{HashType: "MD5", HashValue: strings.Repeat("f", 32), Line: 2, Context: ""},
+			// The source hash survives the round trip, so a reloaded export is complete.
+			{HashType: "SHA1", HashValue: strings.Repeat("e", 40), Line: 4, Context: "x", SourceSHA256: strings.Repeat("9", 64)},
+			{HashType: "MD5", HashValue: strings.Repeat("f", 32), Line: 2, Context: "", SourceSHA256: strings.Repeat("9", 64)},
 		},
 	}
 	id, err := a.db.SaveScan("C:/ev", "2026-10-31T09:15:00.123456", "MD5,SHA1", 5, 3, 2, results, "")
@@ -250,7 +251,7 @@ func TestLoadScanRestoresResultsWithNullLines(t *testing.T) {
 	if !reflect.DeepEqual(a.results, results) {
 		t.Errorf("results = %+v", a.results)
 	}
-	if !strings.Contains(string(extractor.CSVBytes(a.results)), "C:/ev/no_extension,MD5,"+strings.Repeat("c", 32)+",,file digest\n") {
+	if !strings.Contains(string(extractor.CSVBytes(a.results)), "C:/ev/no_extension,MD5,"+strings.Repeat("c", 32)+",,file digest,\n") {
 		t.Error("reloaded digest row must export an empty Line cell")
 	}
 	if _, err := a.LoadScan(id + 100); err == nil {
