@@ -478,7 +478,7 @@ func (a *App) ImportFile(watchlistID int64) string {
 	if err != nil {
 		return "Could not read file: " + err.Error()
 	}
-	return a.importHashes(watchlistID, readers.DecodeUTF8Replace(data), filepath.Base(path))
+	return a.importHashes(watchlistID, readers.DecodeTextReplace(data), filepath.Base(path))
 }
 
 func (a *App) importHashes(watchlistID int64, text, source string) string {

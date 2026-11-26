@@ -16,7 +16,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -191,6 +190,9 @@ func readJSON(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if text, ok := decodeUTF16(data); ok {
+		data = []byte(text)
+	}
 	if !utf8.Valid(data) {
 		return "", errors.New("'utf-8' codec can't decode file: invalid UTF-8")
 	}
@@ -360,20 +362,12 @@ func pyFloatRepr(f float64) string {
 	return fixed
 }
 
-// xmlDecoder builds a decoder that accepts the encodings expat does
-// (UTF-8, UTF-16 with a BOM, Latin-1, ASCII).
+// xmlDecoder builds a decoder that accepts UTF-8, UTF-16 (with a
+// byte-order mark, or without one as decodeUTF16 detects it), Latin-1 and
+// ASCII.
 func xmlDecoder(data []byte) *xml.Decoder {
-	if len(data) >= 2 && (data[0] == 0xFF && data[1] == 0xFE || data[0] == 0xFE && data[1] == 0xFF) {
-		bigEndian := data[0] == 0xFE
-		units := make([]uint16, 0, len(data)/2)
-		for i := 2; i+1 < len(data); i += 2 {
-			if bigEndian {
-				units = append(units, uint16(data[i])<<8|uint16(data[i+1]))
-			} else {
-				units = append(units, uint16(data[i+1])<<8|uint16(data[i]))
-			}
-		}
-		data = []byte(string(utf16.Decode(units)))
+	if text, ok := decodeUTF16(data); ok {
+		data = []byte(text)
 	}
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.CharsetReader = func(charset string, input io.Reader) (io.Reader, error) {

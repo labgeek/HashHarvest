@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -107,12 +108,16 @@ func joinChunks(chunks []Chunk) string {
 
 var newlines = strings.NewReplacer("\r\n", "\n", "\r", "\n")
 
-// readText decodes as UTF-8, falling back to Latin-1 when the bytes are not
-// valid UTF-8, then applies Python's universal-newline translation.
+// readText decodes UTF-16 (see decodeUTF16), else UTF-8, falling back to
+// Latin-1 when the bytes are not valid UTF-8, then applies Python's
+// universal-newline translation.
 func readText(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
+	}
+	if text, ok := decodeUTF16(data); ok {
+		return newlines.Replace(text), nil
 	}
 	if utf8.Valid(data) {
 		return newlines.Replace(string(data)), nil
@@ -126,6 +131,85 @@ func latin1(data []byte) string {
 		runes[i] = rune(b)
 	}
 	return string(runes)
+}
+
+// decodeUTF16 decodes data as UTF-16 when it starts with a byte-order mark,
+// or when it has none but is plainly UTF-16 text (see looksUTF16). ok is
+// false when data is to be read as UTF-8 or Latin-1 instead. A byte-order
+// mark is not part of the text.
+//
+// ponytail: UTF-32 is not detected (its little-endian mark starts like
+// UTF-16's); add it if such files turn up in evidence.
+func decodeUTF16(data []byte) (text string, ok bool) {
+	switch {
+	case len(data) >= 2 && data[0] == 0xFF && data[1] == 0xFE:
+		return string(utf16.Decode(utf16Units(data[2:], false))), true
+	case len(data) >= 2 && data[0] == 0xFE && data[1] == 0xFF:
+		return string(utf16.Decode(utf16Units(data[2:], true))), true
+	}
+	for _, bigEndian := range []bool{false, true} {
+		if looksUTF16(data, bigEndian) {
+			return string(utf16.Decode(utf16Units(data, bigEndian))), true
+		}
+	}
+	return "", false
+}
+
+// utf16Units splits data into 16-bit code units; a trailing odd byte is
+// dropped.
+func utf16Units(data []byte, bigEndian bool) []uint16 {
+	units := make([]uint16, len(data)/2)
+	for i := range units {
+		hi, lo := data[2*i+1], data[2*i]
+		if bigEndian {
+			hi, lo = lo, hi
+		}
+		units[i] = uint16(hi)<<8 | uint16(lo)
+	}
+	return units
+}
+
+// looksUTF16 reports whether data, which has no byte-order mark, is UTF-16
+// text in the given byte order. Tools omit the mark mostly for ASCII-range
+// text, so it requires an even length, a zero high byte in at least 90% of
+// the code units, well-formed surrogate pairs, and no control characters
+// besides tab, line feed, form feed and carriage return. Anything else,
+// binary data included, is left to the UTF-8 / Latin-1 path.
+//
+// ponytail: BOM-less UTF-16 of mostly non-Latin text fails the 90% test and
+// is still read as Latin-1; a mark makes such files decode.
+func looksUTF16(data []byte, bigEndian bool) bool {
+	if len(data) < 2 || len(data)%2 != 0 {
+		return false
+	}
+	units := utf16Units(data, bigEndian)
+	zeroHigh := 0
+	for i := 0; i < len(units); i++ {
+		u := units[i]
+		switch {
+		case u < 0x20 && u != '\t' && u != '\n' && u != '\f' && u != '\r', u == 0xFFFE, u == 0xFFFF:
+			return false
+		case u >= 0xDC00 && u <= 0xDFFF:
+			return false // low surrogate without a high one
+		case u >= 0xD800 && u <= 0xDBFF:
+			if i+1 == len(units) || units[i+1] < 0xDC00 || units[i+1] > 0xDFFF {
+				return false
+			}
+			i++
+		case u < 0x100:
+			zeroHigh++
+		}
+	}
+	return zeroHigh*10 >= len(units)*9
+}
+
+// DecodeTextReplace decodes UTF-16 (see decodeUTF16), else UTF-8 with each
+// invalid sequence replaced as DecodeUTF8Replace does.
+func DecodeTextReplace(data []byte) string {
+	if text, ok := decodeUTF16(data); ok {
+		return text
+	}
+	return DecodeUTF8Replace(data)
 }
 
 // DecodeUTF8Replace decodes like Python's bytes.decode("utf-8", "replace"):
@@ -187,7 +271,7 @@ func readCSV(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rows, err := pyCSVRows(DecodeUTF8Replace(data))
+	rows, err := pyCSVRows(DecodeTextReplace(data))
 	if err != nil {
 		return "", err
 	}

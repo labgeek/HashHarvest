@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf16"
 )
 
 const (
@@ -407,6 +408,65 @@ func TestRunLengthDecode(t *testing.T) {
 	for _, tc := range cases {
 		if got := string(runLengthDecode(tc.in)); got != tc.want {
 			t.Errorf("runLengthDecode(%v) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// utf16Bytes encodes s as UTF-16, little- or big-endian, with or without a
+// byte-order mark.
+func utf16Bytes(s string, bigEndian, bom bool) []byte {
+	units := utf16.Encode([]rune(s))
+	if bom {
+		units = append([]uint16{0xFEFF}, units...)
+	}
+	var b []byte
+	for _, u := range units {
+		if bigEndian {
+			b = append(b, byte(u>>8), byte(u))
+		} else {
+			b = append(b, byte(u), byte(u>>8))
+		}
+	}
+	return b
+}
+
+func TestUTF16IsDecoded(t *testing.T) {
+	const text = "Windows log\r\nmd5 " + md5Hash + " café\r\n"
+	want := "Windows log\nmd5 " + md5Hash + " café\n"
+	for _, enc := range []struct {
+		name           string
+		bigEndian, bom bool
+	}{{"LE with BOM", false, true}, {"BE with BOM", true, true}, {"LE without BOM", false, false}, {"BE without BOM", true, false}} {
+		data := utf16Bytes(text, enc.bigEndian, enc.bom)
+		for _, ext := range []string{".txt", ".log", ".md"} {
+			if got, err := ReadFile(writeFile(t, "f"+ext, data)); err != nil || got != want {
+				t.Errorf("%s %s: got %q, %v; want %q", enc.name, ext, got, err, want)
+			}
+		}
+		if got, err := ReadFile(writeFile(t, "f.csv", utf16Bytes("a,"+md5Hash+"\r\n", enc.bigEndian, enc.bom))); err != nil || got != "a "+md5Hash {
+			t.Errorf("%s csv: got %q, %v", enc.name, got, err)
+		}
+		if got, err := ReadFile(writeFile(t, "f.json", utf16Bytes(`{"md5": "`+md5Hash+`"}`, enc.bigEndian, enc.bom))); err != nil || got != "md5\n"+md5Hash {
+			t.Errorf("%s json: got %q, %v", enc.name, got, err)
+		}
+		if got, err := ReadFile(writeFile(t, "f.xml", utf16Bytes("<r>"+md5Hash+"</r>", enc.bigEndian, enc.bom))); err != nil || got != md5Hash {
+			t.Errorf("%s xml: got %q, %v", enc.name, got, err)
+		}
+	}
+}
+
+func TestBinaryIsNotMisreadAsUTF16(t *testing.T) {
+	cases := map[string][]byte{
+		"control characters":   {0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x04, 0x00},
+		"odd length":           []byte("a\x00b\x00c\x00d\x00e"),
+		"unpaired surrogate":   {'a', 0x00, 0x00, 0xD8, 'b', 0x00, 'c', 0x00},
+		"NULs on both sides":   {'a', 0x00, 0x00, 'b', 'c', 0x00, 0x00, 'd'},
+		"too few NUL bytes":    []byte("abcdefgh\x00ijkl"),
+		"NUL character U+0000": {'a', 0x00, 0x00, 0x00, 'b', 0x00, 'c', 0x00},
+	}
+	for name, data := range cases {
+		if got, err := ReadFile(writeFile(t, "f.txt", data)); err != nil || got != newlines.Replace(latin1(data)) {
+			t.Errorf("%s: got %q, %v; want the bytes read as Latin-1", name, got, err)
 		}
 	}
 }
