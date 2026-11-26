@@ -146,6 +146,20 @@ dialog::backdrop { background: rgba(0, 0, 0, .25); }
 dialog h2 { margin: 0 0 4px; font-size: 16px; }
 .dialog-table { height: 280px; flex: none; }
 #scans tbody tr { cursor: pointer; }
+#skipped th:nth-child(1) { width: 60%; }
+#skipped td { white-space: normal; overflow-wrap: anywhere; user-select: text; }
+.log-text {
+  height: 280px;
+  flex: none;
+  margin: 0;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
 #scans th:nth-child(1) { width: 22%; }
 #scans th:nth-child(3), #scans th:nth-child(4) { width: 14%; }
 #vt-table th:nth-child(2), #vt-table th:nth-child(3) { width: 18%; }

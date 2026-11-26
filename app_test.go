@@ -153,7 +153,8 @@ func TestScanSavesHistoryHighlightsWatchlistAndExports(t *testing.T) {
 	}
 	summary := f.payloads["scan:finished"][0].(Summary)
 	want := Summary{FilesScanned: 3, HashesFound: 3, SkippedFiles: 1,
-		Status: "Scan complete — saved to database. — ⚠ 2 watchlist hits", Matches: []string{md5Hash}}
+		Skipped: []SkippedFile{{filepath.Join(dir, "bad.json"), "invalid JSON"}},
+		Status:  "Scan complete — saved to database. — ⚠ 2 watchlist hits", Matches: []string{md5Hash}}
 	if !reflect.DeepEqual(summary, want) {
 		t.Errorf("summary = %+v", summary)
 	}
@@ -171,6 +172,12 @@ func TestScanSavesHistoryHighlightsWatchlistAndExports(t *testing.T) {
 	}
 	if log, ok, _ := a.db.GetScanLog(s.ID); !ok || !strings.Contains(log, "Scan complete: files=3 hashes=3 skipped=1") {
 		t.Errorf("stored log = %q", log)
+	}
+	if log, err := a.GetScanLog(s.ID); err != nil || !strings.Contains(log, "Skipped "+filepath.Join(dir, "bad.json")+": invalid JSON") {
+		t.Errorf("GetScanLog = %q, %v", log, err)
+	}
+	if _, err := a.GetScanLog(s.ID + 100); err == nil {
+		t.Error("the log of a missing scan must be an error")
 	}
 
 	// Export writes exactly what the extractor's exporter produces.

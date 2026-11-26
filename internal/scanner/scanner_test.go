@@ -107,6 +107,16 @@ func TestSkippedFilesAreCountedAndReported(t *testing.T) {
 	}
 }
 
+func TestSkippedFilesAreKeptInTheScanLog(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "bad.json", "{")
+	result := scan(t, Scanner{Mode: "text"}, dir, nil)
+	want := " WARNING hashharvest.core.scanner: Skipped " + filepath.Join(dir, "bad.json") + ": " + result.Errors[0].Message + "\n"
+	if !strings.Contains(result.Log, want) {
+		t.Errorf("log = %q, want a line ending %q", result.Log, want)
+	}
+}
+
 func TestScanLogIsCaptured(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "notes.txt", "no hashes here")

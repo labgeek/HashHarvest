@@ -9,6 +9,7 @@ const $ = (id) => document.getElementById(id);
 
 const COLS = ["path", "fileType", "hashType", "hashValue", "line", "context"];
 let rows = [];          // {path, fileType, hashType, hashValue, line, context, hit, tr}
+let skipped = [];       // {path, reason} of the current live scan
 let sortable = false;   // header sorting is enabled once a result set is complete
 let sort = { col: null, asc: true };
 let menuRow = null;
@@ -76,6 +77,7 @@ function resetOutput() {
   $("files-scanned").textContent = "0";
   $("hashes-found").textContent = "0";
   $("skipped-files").textContent = "0";
+  setSkipped([]);
   $("export-csv").disabled = true;
   $("export-json").disabled = true;
 }
@@ -102,6 +104,7 @@ function showSummary(summary) {
   $("files-scanned").textContent = String(summary.filesScanned);
   $("hashes-found").textContent = String(summary.hashesFound);
   $("skipped-files").textContent = String(summary.skippedFiles);
+  setSkipped(summary.skipped);
   setStatus(summary.status);
   highlight(summary.matches);
   setSortable(true);
@@ -110,6 +113,11 @@ function showSummary(summary) {
 }
 
 function report(error) { setStatus("Error: " + error); }
+
+function setSkipped(list) {
+  skipped = list || [];
+  $("show-skipped").hidden = skipped.length === 0;
+}
 
 // ---- main window ---------------------------------------------------------
 
@@ -210,6 +218,20 @@ $("export-json").addEventListener("click", async () => {
   if (status) setStatus(status);
 });
 
+$("show-skipped").addEventListener("click", () => {
+  const body = $("skipped").tBodies[0];
+  body.replaceChildren();
+  for (const file of skipped) {
+    const tr = body.insertRow();
+    for (const text of [file.path, file.reason]) {
+      const td = tr.insertCell();
+      td.textContent = text;
+      td.title = text;
+    }
+  }
+  $("skipped-dialog").showModal();
+});
+
 for (const button of document.querySelectorAll("dialog [data-close]")) {
   button.addEventListener("click", () => button.closest("dialog").close());
 }
@@ -270,6 +292,18 @@ async function loadSelectedScan() {
   }
 }
 $("load-scan").addEventListener("click", loadSelectedScan);
+
+$("view-log").addEventListener("click", async () => {
+  if (historySelected < 0) return;
+  let text;
+  try {
+    text = await App.GetScanLog(historyRows[historySelected].id);
+  } catch (error) {
+    text = String(error);
+  }
+  $("log-text").textContent = text;
+  $("log-dialog").showModal();
+});
 
 // ---- Watchlist Manager ---------------------------------------------------
 

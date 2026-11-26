@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -45,11 +46,20 @@ func Setup() {
 }
 
 // Info logs a message under the given logger name.
-func Info(name, format string, args ...any) {
-	msg := fmt.Sprintf(format, args...)
+func Info(name, format string, args ...any) { write("INFO", name, format, args...) }
+
+// Warn logs a warning under the given logger name.
+func Warn(name, format string, args ...any) { write("WARNING", name, format, args...) }
+
+// oneLine escapes line breaks, so a file name or error text cannot start
+// what looks like a separate log entry.
+var oneLine = strings.NewReplacer("\r", `\r`, "\n", `\n`)
+
+func write(level, name, format string, args ...any) {
+	msg := oneLine.Replace(fmt.Sprintf(format, args...))
 	now := time.Now()
 	// Python's %(asctime)s: local time with comma-separated milliseconds.
-	full := fmt.Sprintf("%s,%03d INFO %s: %s\n", now.Format("2006-01-02 15:04:05"), now.Nanosecond()/1e6, name, msg)
+	full := fmt.Sprintf("%s,%03d %s %s: %s\n", now.Format("2006-01-02 15:04:05"), now.Nanosecond()/1e6, level, name, msg)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -57,7 +67,7 @@ func Info(name, format string, args ...any) {
 		buf.WriteString(full)
 	}
 	if console {
-		fmt.Fprintf(os.Stderr, "INFO %s: %s\n", name, msg)
+		fmt.Fprintf(os.Stderr, "%s %s: %s\n", level, name, msg)
 	}
 	if logPath != "" {
 		appendRotating(logPath, full)
