@@ -5,6 +5,21 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ---
 
+## [11-26-2026 16:50:49] — v1.0.2
+
+### Added
+- `SECURITY.md`: why the PDF reader uses RC4 and MD5
+- Tests for the documented coverage limits
+
+### Changed
+- Version 1.0.2
+- `README.md`, `USAGE.md` and command-line help: state what a scan does not search, and that no exit code certifies complete coverage
+- `README.md`: removed the note that no release is published
+
+### Fixed
+- `.gitignore` no longer matches the tracked PowerShell scripts or `frontend/dist`
+- Release files: the `v1.0.1` tag did not match the code version, so its release run failed at packaging and did not create `hashharvest-cli.exe` or `SHA256SUMS.txt`
+
 ## [11-26-2026 13:16:38] — v1.0.1
 
 ### Added

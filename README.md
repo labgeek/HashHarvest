@@ -2,7 +2,7 @@
 
 Find MD5, SHA1, SHA256 and SHA512 strings in supported document text, or compute file digests, and triage the results against your watchlists.
 
-**[Download the latest release](https://github.com/labgeek/HashHarvest/releases/latest)** (Windows 10/11; no release is published yet, so for now [build from source](#build-from-source))
+**[Download the latest release](https://github.com/labgeek/HashHarvest/releases/latest)** (Windows 10/11)
 
 > **Demo:** _screenshot or short recording to come._
 <!-- TODO: add a demo image or GIF of a scan of samples/evidence. -->
