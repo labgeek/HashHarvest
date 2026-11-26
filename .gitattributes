@@ -4,3 +4,5 @@
 *.ico binary
 # gofmt expects LF, also on Windows checkouts
 *.go text eol=lf
+# Go fuzz corpus files are byte-exact test inputs
+internal/**/testdata/fuzz/** -text

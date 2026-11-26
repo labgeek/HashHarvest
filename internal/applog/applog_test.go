@@ -19,8 +19,9 @@ func TestCaptureCollectsOnlyWhileActive(t *testing.T) {
 	outer := stop()
 	Info("test", "after")
 
-	// Python's "%(asctime)s %(levelname)s %(name)s: %(message)s".
-	line := regexp.MustCompile(`^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} INFO hashharvest\.core\.scanner: Scan started: dir=C:/ev\n`)
+	// Local time with milliseconds and the UTC offset, then level, logger
+	// name and message.
+	line := regexp.MustCompile(`^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} [+-]\d\d:\d\d INFO hashharvest\.core\.scanner: Scan started: dir=C:/ev\n`)
 	if !line.MatchString(outer) || strings.Count(outer, "\n") != 3 || strings.Contains(outer, "before") || strings.Contains(outer, "after") {
 		t.Errorf("outer capture = %q", outer)
 	}

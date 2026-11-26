@@ -117,6 +117,38 @@ func TestSkippedFilesAreKeptInTheScanLog(t *testing.T) {
 	}
 }
 
+// A JSON file over the parsing limit is still scanned, as plain text, and
+// the log says so.
+func TestOversizedJSONIsScannedAsPlainText(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "huge.json")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString(`[{"md5": "` + md5Hash + `"}`)
+	filler := []byte(`,{"note": "` + strings.Repeat("x", 1000) + `"}`)
+	for written := 0; written <= 128<<20; written += len(filler) {
+		f.Write(filler)
+	}
+	f.WriteString("]")
+	f.Close()
+
+	var notes []string
+	result := scan(t, Scanner{Mode: "text"}, dir, func(e Event) {
+		if n, ok := e.(Note); ok {
+			notes = append(notes, n.Message)
+		}
+	})
+	want := path + ": scanned as plain text: larger than the 128 MiB limit for parsing JSON files"
+	if got := values(result); !reflect.DeepEqual(got, []string{md5Hash}) || result.SkippedFiles() != 0 {
+		t.Errorf("values %v, skipped %d", got, result.SkippedFiles())
+	}
+	if !reflect.DeepEqual(notes, []string{want}) || !strings.Contains(result.Log, " WARNING hashharvest.core.scanner: "+want) {
+		t.Errorf("notes %q, log %q", notes, result.Log)
+	}
+}
+
 func TestScanLogIsCaptured(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "notes.txt", "no hashes here")

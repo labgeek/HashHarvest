@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- File names and contexts from scanned evidence are untrusted: nothing but
+     this app's own scripts and styles may load or run. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
 <title>HashHarvest</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -46,6 +49,7 @@
       </div>
       <div class="row buttons">
         <button id="start" type="button">Start Scan</button>
+        <button id="cancel" type="button" hidden>Cancel Scan</button>
         <button id="clear" type="button">Clear Form</button>
         <button id="history" type="button">Scan History</button>
         <button id="watchlist" type="button">Watchlist</button>

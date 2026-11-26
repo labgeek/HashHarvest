@@ -33,7 +33,16 @@ func main() {
 	loadDotenv(filepath.Join(base, ".env"))
 	app := NewApp(base)
 
-	err := wails.Run(&options.App{
+	err := wails.Run(appOptions(app))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
+	}
+}
+
+// appOptions configures the window.
+func appOptions(app *App) *options.App {
+	return &options.App{
 		Title:            windowTitle,
 		Width:            1200,
 		Height:           720,
@@ -44,10 +53,9 @@ func main() {
 		OnStartup:        func(ctx context.Context) { app.ui = runtimeUI(ctx) },
 		OnShutdown:       app.shutdown,
 		Bind:             []any{app},
-	})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
-		os.Exit(1)
+		// A file dragged onto the window would otherwise open inside it, as
+		// a page that could call the bound methods.
+		DragAndDrop: &options.DragAndDrop{DisableWebViewDrop: true},
 	}
 }
 

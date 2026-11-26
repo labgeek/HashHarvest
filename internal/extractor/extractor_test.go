@@ -42,17 +42,17 @@ func TestFindHashes(t *testing.T) {
 		want  []Hit
 	}{
 		{"each length", h("a", 32) + " " + h("b", 40) + " " + h("c", 64) + " " + h("d", 128), nil, []Hit{
-			{"MD5", h("a", 32), 1, ""}, {"SHA1", h("b", 40), 1, ""},
-			{"SHA256", h("c", 64), 1, ""}, {"SHA512", h("d", 128), 1, ""}}},
-		{"lowercased", "X " + strings.ToUpper(md5Hash), nil, []Hit{{"MD5", md5Hash, 1, ""}}},
+			{"MD5", h("a", 32), 1, "", ""}, {"SHA1", h("b", 40), 1, "", ""},
+			{"SHA256", h("c", 64), 1, "", ""}, {"SHA512", h("d", 128), 1, "", ""}}},
+		{"lowercased", "X " + strings.ToUpper(md5Hash), nil, []Hit{{"MD5", md5Hash, 1, "", ""}}},
 		{"one too long", h("a", 33), nil, nil},
 		{"one too short", h("a", 31), nil, nil},
 		{"between lengths", h("a", 41) + " " + h("a", 65) + " " + h("a", 127) + " " + h("a", 129), nil, nil},
 		{"non-hex neighbors are boundaries", "g" + h("a", 32) + "g:" + h("b", 32) + "-", nil,
-			[]Hit{{"MD5", h("a", 32), 1, ""}, {"MD5", h("b", 32), 1, ""}}},
+			[]Hit{{"MD5", h("a", 32), 1, "", ""}, {"MD5", h("b", 32), 1, "", ""}}},
 		{"line numbers count newlines", "\n\n" + h("a", 32) + "\nx\n" + h("b", 40), nil,
-			[]Hit{{"MD5", h("a", 32), 3, ""}, {"SHA1", h("b", 40), 5, ""}}},
-		{"type filter", h("a", 32) + " " + h("b", 40), []string{"SHA1"}, []Hit{{"SHA1", h("b", 40), 1, ""}}},
+			[]Hit{{"MD5", h("a", 32), 3, "", ""}, {"SHA1", h("b", 40), 5, "", ""}}},
+		{"type filter", h("a", 32) + " " + h("b", 40), []string{"SHA1"}, []Hit{{"SHA1", h("b", 40), 1, "", ""}}},
 		{"empty type set selects nothing", h("a", 32), []string{}, nil},
 		{"fullwidth digits are not hex", strings.Repeat("\uff11", 32), nil, nil},
 		{"empty", "", nil, nil},
@@ -99,10 +99,12 @@ func TestExtractKeepsFirstOccurrencePerFile(t *testing.T) {
 	if err != nil || len(fileErrors) != 0 {
 		t.Fatalf("err %v, file errors %v", err, fileErrors)
 	}
-	// Context is 60 characters either side of the first occurrence.
+	// Context is 60 characters either side of the first occurrence. Every hit
+	// carries the SHA-256 of the file it came from.
+	source := sha256Of(t, path)
 	want := []Hit{
-		{"MD5", md5Hash, 1, "first " + md5Hash + " again " + md5Hash + " " + sha256Hash[:20]},
-		{"SHA256", sha256Hash, 3, md5Hash[12:] + " again " + md5Hash + " " + sha256Hash},
+		{"MD5", md5Hash, 1, "first " + md5Hash + " again " + md5Hash + " " + sha256Hash[:20], source},
+		{"SHA256", sha256Hash, 3, md5Hash[12:] + " again " + md5Hash + " " + sha256Hash, source},
 	}
 	if !reflect.DeepEqual(results[path], want) {
 		t.Errorf("got %+v", results[path])
@@ -150,8 +152,8 @@ func TestHashFilesDigestMatchesStdlib(t *testing.T) {
 	md5Sum, shaSum := md5.Sum([]byte("hello world")), sha256.Sum256([]byte("hello world"))
 	// Same shape as text mode: no line number, fixed context.
 	want := []Hit{
-		{"MD5", hex.EncodeToString(md5Sum[:]), 0, "file digest"},
-		{"SHA256", hex.EncodeToString(shaSum[:]), 0, "file digest"},
+		{"MD5", hex.EncodeToString(md5Sum[:]), 0, "file digest", hex.EncodeToString(shaSum[:])},
+		{"SHA256", hex.EncodeToString(shaSum[:]), 0, "file digest", hex.EncodeToString(shaSum[:])},
 	}
 	if !reflect.DeepEqual(results[path], want) {
 		t.Errorf("got %+v, want %+v", results[path], want)
@@ -278,7 +280,7 @@ func TestCSVSafe(t *testing.T) {
 func TestExportCSVIsUTF8WithBOM(t *testing.T) {
 	// A path outside cp1252 (the Windows locale default) must still export.
 	path := "C:/cases/\u62a5\u544a.txt"
-	results := Results{path: {{"MD5", strings.Repeat("a", 32), 3, "hash \u00e9\u4e2d context"}}}
+	results := Results{path: {{"MD5", strings.Repeat("a", 32), 3, "hash \u00e9\u4e2d context", "f00d"}}}
 	out := filepath.Join(t.TempDir(), "out.csv")
 	if err := ExportCSV(out, results); err != nil {
 		t.Fatal(err)
@@ -287,8 +289,8 @@ func TestExportCSVIsUTF8WithBOM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Absolute_Path,Hash_Type,Hash_Value,Line,Context\n" +
-		path + ",MD5," + strings.Repeat("a", 32) + ",3,hash \u00e9\u4e2d context\n"
+	want := "Absolute_Path,Hash_Type,Hash_Value,Line,Context,Source_SHA256\n" +
+		path + ",MD5," + strings.Repeat("a", 32) + ",3,hash \u00e9\u4e2d context,f00d\n"
 	if !bytes.HasPrefix(raw, []byte{0xEF, 0xBB, 0xBF}) || string(raw[3:]) != want {
 		t.Errorf("got %q", raw)
 	}
@@ -296,12 +298,12 @@ func TestExportCSVIsUTF8WithBOM(t *testing.T) {
 
 func TestExportFormats(t *testing.T) {
 	results := Results{
-		"b.txt": {{"MD5", "m", 0, "file digest"}},
-		"a.txt": {{"SHA1", "s", 2, "=1+1, \"q\"\nnext"}},
+		"b.txt": {{"MD5", "m", 0, "file digest", ""}},
+		"a.txt": {{"SHA1", "s", 2, "=1+1, \"q\"\nnext", "ab12"}},
 	}
-	wantCSV := "\xef\xbb\xbfAbsolute_Path,Hash_Type,Hash_Value,Line,Context\n" +
-		"a.txt,SHA1,s,2,\"'=1+1, \"\"q\"\"\nnext\"\n" +
-		"b.txt,MD5,m,,file digest\n"
+	wantCSV := "\xef\xbb\xbfAbsolute_Path,Hash_Type,Hash_Value,Line,Context,Source_SHA256\n" +
+		"a.txt,SHA1,s,2,\"'=1+1, \"\"q\"\"\nnext\",ab12\n" +
+		"b.txt,MD5,m,,file digest,\n"
 	if got := string(CSVBytes(results)); got != wantCSV {
 		t.Errorf("csv:\n got  %q\n want %q", got, wantCSV)
 	}
@@ -311,14 +313,16 @@ func TestExportFormats(t *testing.T) {
     "hash_type": "SHA1",
     "hash_value": "s",
     "line": 2,
-    "context": "=1+1, \"q\"\nnext"
+    "context": "=1+1, \"q\"\nnext",
+    "source_sha256": "ab12"
   },
   {
     "absolute_path": "b.txt",
     "hash_type": "MD5",
     "hash_value": "m",
     "line": null,
-    "context": "file digest"
+    "context": "file digest",
+    "source_sha256": null
   }
 ]`
 	got := strings.ReplaceAll(string(JSONBytes(results)), "\r\n", "\n") // CRLF on Windows, as Python writes
@@ -341,5 +345,34 @@ func TestHashSet(t *testing.T) {
 	}
 	if got := HashSet("nothing here"); len(got) != 0 {
 		t.Errorf("got %v", got)
+	}
+}
+
+// A file being hashed is read through ctxReader, so Cancel stops a large
+// file partway instead of after it.
+func TestContextReaderStopsMidFile(t *testing.T) {
+	ctx, cancel := context.WithCancel(bg)
+	r := ctxReader{ctx, strings.NewReader(strings.Repeat("x", 1<<20))}
+	buf := make([]byte, 1024)
+	if n, err := r.Read(buf); n != len(buf) || err != nil {
+		t.Fatalf("first read: %d, %v", n, err)
+	}
+	cancel()
+	if n, err := r.Read(buf); n != 0 || !errors.Is(err, context.Canceled) {
+		t.Errorf("read after cancel: %d, %v", n, err)
+	}
+}
+
+// Cancellation inside a file stops the scan: it is not that file failing.
+func TestCancelInsideAFileIsNotASkip(t *testing.T) {
+	dir := t.TempDir()
+	path := write(t, dir, "big.bin", strings.Repeat("x", 1<<20))
+	ctx, cancel := context.WithCancel(bg)
+	cancel()
+	if _, err := digestFile(ctx, path, nil); !errors.Is(err, context.Canceled) {
+		t.Errorf("digestFile: %v", err)
+	}
+	if _, _, err := extractFile(ctx, write(t, dir, "a.txt", md5Hash), nil); !errors.Is(err, context.Canceled) {
+		t.Errorf("extractFile: %v", err)
 	}
 }

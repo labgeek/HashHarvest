@@ -5,6 +5,7 @@ package readers
 
 import (
 	"archive/zip"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -108,21 +109,19 @@ func joinChunks(chunks []Chunk) string {
 
 var newlines = strings.NewReplacer("\r\n", "\n", "\r", "\n")
 
-// readText decodes UTF-16 (see decodeUTF16), else UTF-8, falling back to
-// Latin-1 when the bytes are not valid UTF-8, then applies Python's
-// universal-newline translation.
+// readText returns the whole text of a plain-text file, decoded as
+// StreamText decodes it. Scans stream such files instead.
 func readText(path string) (string, error) {
-	data, err := os.ReadFile(path)
+	var b strings.Builder
+	err := StreamText(context.Background(), path, func(text []rune) {
+		for _, r := range text {
+			b.WriteRune(r)
+		}
+	})
 	if err != nil {
 		return "", err
 	}
-	if text, ok := decodeUTF16(data); ok {
-		return newlines.Replace(text), nil
-	}
-	if utf8.Valid(data) {
-		return newlines.Replace(string(data)), nil
-	}
-	return newlines.Replace(latin1(data)), nil
+	return b.String(), nil
 }
 
 func latin1(data []byte) string {
@@ -300,9 +299,14 @@ const (
 	nsDraw  = "http://schemas.openxmlformats.org/drawingml/2006/main"
 )
 
+// zipBudget is how many decompressed bytes one Office file may still read.
+type zipBudget struct{ left int64 }
+
+func newZipBudget() *zipBudget { return &zipBudget{maxZipTotal} }
+
 // zipEntry reads a named archive member. Like Python's zipfile, the last
 // entry wins when a name is duplicated.
-func zipEntry(archive *zip.ReadCloser, name string) ([]byte, error) {
+func zipEntry(archive *zip.ReadCloser, name string, budget *zipBudget) ([]byte, error) {
 	var found *zip.File
 	for _, f := range archive.File {
 		if f.Name == name {
@@ -317,7 +321,23 @@ func zipEntry(archive *zip.ReadCloser, name string) ([]byte, error) {
 		return nil, err
 	}
 	defer rc.Close()
-	return io.ReadAll(rc)
+	// The sizes in the archive's headers can lie, so count what is read.
+	limit, overTotal := maxZipPart, false
+	if budget.left < limit {
+		limit, overTotal = budget.left, true
+	}
+	data, err := io.ReadAll(io.LimitReader(rc, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		if overTotal {
+			return nil, fmt.Errorf("decompressed content exceeds the %s limit per file", sizeText(maxZipTotal))
+		}
+		return nil, fmt.Errorf("%s expands beyond the %s limit for one part", name, sizeText(maxZipPart))
+	}
+	budget.left -= int64(len(data))
+	return data, nil
 }
 
 func readDOCX(path string) (string, error) {
@@ -326,7 +346,7 @@ func readDOCX(path string) (string, error) {
 		return "", err
 	}
 	defer archive.Close()
-	data, err := zipEntry(archive, "word/document.xml")
+	data, err := zipEntry(archive, "word/document.xml", newZipBudget())
 	if err != nil {
 		return "", err
 	}
@@ -346,6 +366,7 @@ func readXLSX(path string) (string, error) {
 	}
 	defer archive.Close()
 
+	budget := newZipBudget()
 	var lines []string
 	sheets := map[string]bool{}
 	hasShared := false
@@ -358,7 +379,7 @@ func readXLSX(path string) (string, error) {
 		}
 	}
 	if hasShared {
-		data, err := zipEntry(archive, "xl/sharedStrings.xml")
+		data, err := zipEntry(archive, "xl/sharedStrings.xml", budget)
 		if err != nil {
 			return "", err
 		}
@@ -374,7 +395,7 @@ func readXLSX(path string) (string, error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		data, err := zipEntry(archive, name)
+		data, err := zipEntry(archive, name, budget)
 		if err != nil {
 			return "", err
 		}
@@ -423,9 +444,10 @@ func readPPTXChunks(path string) ([]Chunk, error) {
 		return slides[i].name < slides[j].name
 	})
 
+	budget := newZipBudget()
 	var chunks []Chunk
 	for _, s := range slides {
-		data, err := zipEntry(archive, s.name)
+		data, err := zipEntry(archive, s.name, budget)
 		if err != nil {
 			return nil, err
 		}
@@ -463,6 +485,9 @@ func ReadPDF(path string) (string, error) {
 }
 
 func readPDFChunks(path string) ([]Chunk, error) {
+	if info, err := os.Stat(path); err == nil && info.Size() > maxPDFSize {
+		return nil, fmt.Errorf("PDF is larger than the %s limit", sizeText(maxPDFSize))
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

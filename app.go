@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,7 +50,8 @@ type App struct {
 
 	mu         sync.Mutex
 	results    extractor.Results // current scan results, the source for exports and VirusTotal
-	scanCancel context.CancelFunc
+	scan       scanInfo          // the scan behind results, for export manifests
+	scanCancel context.CancelCauseFunc
 	scanDone   chan struct{}
 	vtCancel   context.CancelFunc
 	vtDone     chan struct{}
@@ -140,7 +142,7 @@ type SkippedFile struct {
 // the start of each scan).
 func (a *App) ResetResults() {
 	a.mu.Lock()
-	a.results = extractor.Results{}
+	a.results, a.scan = extractor.Results{}, scanInfo{}
 	a.mu.Unlock()
 }
 
@@ -170,7 +172,7 @@ func (a *App) StartScan(directory, mode string, hashTypes []string) ScanStart {
 		a.mu.Unlock()
 		return ScanStart{Status: "A scan is already running"}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancelCause(context.Background())
 	done := make(chan struct{})
 	a.scanCancel, a.scanDone = cancel, done
 	a.mu.Unlock()
@@ -180,12 +182,27 @@ func (a *App) StartScan(directory, mode string, hashTypes []string) ScanStart {
 			a.mu.Lock()
 			a.scanCancel, a.scanDone = nil, nil
 			a.mu.Unlock()
-			cancel()
+			cancel(nil)
 			close(done)
 		}()
 		a.runScan(ctx, directory, mode, hashTypes)
 	}()
 	return ScanStart{OK: true, Status: "Scanning files..."}
+}
+
+// errScanCancelled is the cancel cause when the user presses Cancel, as
+// opposed to the window closing.
+var errScanCancelled = errors.New("scan cancelled")
+
+// CancelScan stops the running scan, if any. It returns at once; the scan
+// reports scan:cancelled when it has stopped.
+func (a *App) CancelScan() {
+	a.mu.Lock()
+	cancel := a.scanCancel
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel(errScanCancelled)
+	}
 }
 
 func (a *App) runScan(ctx context.Context, directory, mode string, hashTypes []string) {
@@ -208,10 +225,18 @@ func (a *App) runScan(ctx context.Context, directory, mode string, hashTypes []s
 		case scanner.FileSkipped:
 			flush()
 			a.ui.emit("scan:status", e.Message)
+		case scanner.Note:
+			flush()
+			a.ui.emit("scan:status", e.Message)
 		}
 	})
 	flush()
 	if err != nil {
+		if errors.Is(context.Cause(ctx), errScanCancelled) {
+			// A partial scan stored or exported as if complete would mislead.
+			a.ui.emit("scan:cancelled", "Scan cancelled — nothing saved")
+			return
+		}
 		if ctx.Err() != nil {
 			return // the window is closing
 		}
@@ -230,9 +255,14 @@ func (a *App) runScan(ctx context.Context, directory, mode string, hashTypes []s
 	}
 	types := append([]string(nil), hashTypes...)
 	sort.Strings(types)
+	scannedAt := db.NowISO()
+	skipped := append([]SkippedFile{}, summary.Skipped...)
+	info := scanInfo{Folder: directory, ScannedAt: scannedAt, Mode: mode, HashTypes: types,
+		FilesScanned: summary.FilesScanned, HashesFound: summary.HashesFound, SkippedFiles: summary.SkippedFiles,
+		Skipped: &skipped}
 	if d, err := a.database(); err != nil {
 		summary.Status = fmt.Sprintf("Scan complete (database save failed: %s)", err)
-	} else if scanID, err := d.SaveScan(directory, db.NowISO(), strings.Join(types, ","),
+	} else if scanID, err := d.SaveScan(directory, scannedAt, strings.Join(types, ","),
 		summary.FilesScanned, summary.HashesFound, summary.SkippedFiles, result.Results, result.Log); err != nil {
 		summary.Status = fmt.Sprintf("Scan complete (database save failed: %s)", err)
 	} else {
@@ -241,7 +271,7 @@ func (a *App) runScan(ctx context.Context, directory, mode string, hashTypes []s
 	}
 
 	a.mu.Lock()
-	a.results = result.Results
+	a.results, a.scan = result.Results, info
 	a.mu.Unlock()
 	a.ui.emit("scan:finished", summary)
 	a.ui.message(dlgInfo, "Scan Complete", "Scan complete. Use Export CSV or Export JSON to save results.")
@@ -370,7 +400,8 @@ func (a *App) LoadScan(scanID int64) (*Summary, error) {
 		// A missing line number stays missing (file-digest rows), so exports
 		// of a reloaded scan match those of the live scan.
 		results[r.FilePath] = append(results[r.FilePath], extractor.Hit{
-			HashType: r.HashType, HashValue: r.HashValue, Line: r.Line, Context: r.Context})
+			HashType: r.HashType, HashValue: r.HashValue, Line: r.Line, Context: r.Context,
+			SourceSHA256: r.SourceSHA256})
 		rows[i] = Row{r.FilePath, r.FileType, r.HashType, r.HashValue, r.Line, r.Context}
 	}
 	for _, hits := range results {
@@ -392,6 +423,9 @@ func (a *App) LoadScan(scanID int64) (*Summary, error) {
 
 	a.mu.Lock()
 	a.results = results
+	a.scan = scanInfo{Folder: scan.Directory, ScannedAt: scan.ScannedAt, Mode: modeOf(results),
+		HashTypes: splitTypes(scan.HashTypes), FilesScanned: scan.FilesScanned, HashesFound: len(rows),
+		SkippedFiles: scan.SkippedFiles} // the skip list itself is only in the stored log
 	a.mu.Unlock()
 	return summary, nil
 }
@@ -650,13 +684,17 @@ func (a *App) export(format, defaultName, filterName, pattern string, write func
 		return ""
 	}
 	a.mu.Lock()
-	results := a.results
+	results, scan := a.results, a.scan
 	a.mu.Unlock()
 	if err := write(path, results); err != nil {
 		a.ui.message(dlgError, "Export Error", fmt.Sprintf("Could not save %s: %s", format, err))
 		return ""
 	}
-	a.ui.message(dlgInfo, "Export Complete", fmt.Sprintf("%s saved to:\n%s", format, path))
+	if err := writeManifest(path, format, results, scan); err != nil {
+		a.ui.message(dlgWarning, "Export Complete", fmt.Sprintf("%s saved to:\n%s\n\nThe manifest could not be written: %s", format, path, err))
+		return fmt.Sprintf("Exported %s: %s (no manifest)", format, path)
+	}
+	a.ui.message(dlgInfo, "Export Complete", fmt.Sprintf("%s saved to:\n%s\n\nManifest:\n%s", format, path, manifestPath(path)))
 	return fmt.Sprintf("Exported %s: %s", format, path)
 }
 
@@ -667,7 +705,7 @@ func (a *App) shutdown(context.Context) {
 	scanCancel, scanDone := a.scanCancel, a.scanDone
 	a.mu.Unlock()
 	if scanCancel != nil {
-		scanCancel()
+		scanCancel(nil)
 		<-scanDone
 	}
 	a.CancelLookup()

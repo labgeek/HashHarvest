@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -112,8 +113,8 @@ func TestStoredFileTypeAndNullLine(t *testing.T) {
 	}, "")
 	want := []ResultRow{
 		// Same rule as the extractor: extensionless files are "FILE"; no line stays NULL.
-		{"C:/ev/no_extension", "FILE", "MD5", strings.Repeat("b", 32), 0, "file digest"},
-		{"C:/ev/report.PdF", "PDF", "SHA1", strings.Repeat("c", 40), 4, "[page 1] x"},
+		{"C:/ev/no_extension", "FILE", "MD5", strings.Repeat("b", 32), 0, "file digest", ""},
+		{"C:/ev/report.PdF", "PDF", "SHA1", strings.Repeat("c", 40), 4, "[page 1] x", ""},
 	}
 	if got := must(d.GetResults(id))(t); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v", got)
@@ -172,9 +173,9 @@ func TestWideSchemaIsMigratedToNarrow(t *testing.T) {
 	})
 	d := open(t, path)
 	want := []ResultRow{
-		{"a.pdf", "PDF", "MD5", "m1", 0, ""},
-		{"a.pdf", "PDF", "SHA1", "s1", 0, ""},
-		{"b.txt", "TXT", "SHA512", "x5", 0, ""},
+		{"a.pdf", "PDF", "MD5", "m1", 0, "", ""},
+		{"a.pdf", "PDF", "SHA1", "s1", 0, "", ""},
+		{"b.txt", "TXT", "SHA512", "x5", 0, "", ""},
 	}
 	if got := must(d.GetResults(1))(t); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v", got)
@@ -272,5 +273,78 @@ func TestISO(t *testing.T) {
 	}
 	if got := ISO(at.Truncate(time.Second)); got != "2026-11-14T10:04:11" {
 		t.Errorf("zero microseconds must be omitted: %q", got)
+	}
+}
+
+// Stored timestamps carry their UTC offset, so a scan's time is
+// unambiguous when the database moves to another machine or time zone.
+func TestNowISOIncludesTheOffset(t *testing.T) {
+	zoned := regexp.MustCompile(`^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?[+-]\d\d:\d\d$`)
+	if got := NowISO(); !zoned.MatchString(got) {
+		t.Errorf("NowISO() = %q", got)
+	}
+	at := time.Date(2026, 11, 14, 10, 4, 11, 123456000, time.FixedZone("", -5*3600))
+	if got := ISOWithOffset(at); got != "2026-11-14T10:04:11.123456-05:00" {
+		t.Errorf("got %q", got)
+	}
+	if got := ISOWithOffset(at.UTC()); got != "2026-11-14T15:04:11.123456+00:00" {
+		t.Errorf("UTC: %q", got)
+	}
+}
+
+// History filtering compares the local date and time, so scans saved
+// before timestamps had an offset and scans saved after it sort and filter
+// together.
+func TestGetScansMixesOldAndZonedTimestamps(t *testing.T) {
+	d := open(t, filepath.Join(t.TempDir(), "scans.db"))
+	for _, at := range []string{"2026-10-01T08:00:00", "2026-10-02T08:00:00-05:00", "2026-10-03T08:00:00.5"} {
+		must(d.SaveScan("C:/ev", at, "MD5", 0, 0, 0, extractor.Results{}, ""))(t)
+	}
+	scans, err := d.GetScans("2026-10-02T00:00:00")
+	if err != nil || len(scans) != 2 || scans[0].ScannedAt != "2026-10-03T08:00:00.5" || scans[1].ScannedAt != "2026-10-02T08:00:00-05:00" {
+		t.Errorf("scans = %+v, %v", scans, err)
+	}
+}
+
+func TestSourceSHA256IsStored(t *testing.T) {
+	d := open(t, filepath.Join(t.TempDir(), "scans.db"))
+	results := extractor.Results{"C:/ev/a.txt": {
+		{HashType: "MD5", HashValue: "m", Line: 1, SourceSHA256: "ab12"},
+		{HashType: "SHA1", HashValue: "s", Line: 2},
+	}}
+	id := must(d.SaveScan("C:/ev", "2026-11-01T10:00:00", "MD5,SHA1", 1, 2, 0, results, ""))(t)
+	rows, err := d.GetResults(id)
+	if err != nil || len(rows) != 2 || rows[0].SourceSHA256 != "ab12" || rows[1].SourceSHA256 != "" {
+		t.Errorf("rows = %+v, %v", rows, err)
+	}
+}
+
+// A version 2 database, as the previous release wrote, opens, gains the new
+// column and keeps its rows, which have no source hash.
+func TestVersion2DBIsMigrated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v2.db")
+	conn, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = conn.Exec(baseSchema + `;
+		ALTER TABLE scans ADD COLUMN log TEXT;
+		INSERT INTO scans (scanned_at, directory, hash_types, files_scanned, hashes_found, skipped_files, log)
+			VALUES ('2026-10-01T08:00:00', 'C:/ev', 'MD5', 1, 1, 0, 'old log');
+		INSERT INTO hash_results (scan_id, file_path, file_type, hash_type, hash_value, line_number, context)
+			VALUES (1, 'C:/ev/a.txt', 'TXT', 'MD5', 'm', 3, 'ctx');
+		PRAGMA user_version = 2;`)
+	conn.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := open(t, path)
+	if v := userVersion(t, path); v != 3 || !hasColumn(t, path, "hash_results", "source_sha256") {
+		t.Fatalf("user_version %d, source_sha256 column %v", v, hasColumn(t, path, "hash_results", "source_sha256"))
+	}
+	rows, err := d.GetResults(1)
+	want := []ResultRow{{FilePath: "C:/ev/a.txt", FileType: "TXT", HashType: "MD5", HashValue: "m", Line: 3, Context: "ctx"}}
+	if err != nil || !reflect.DeepEqual(rows, want) {
+		t.Errorf("rows = %+v, %v", rows, err)
 	}
 }

@@ -30,18 +30,18 @@ func csvField(s string) string {
 }
 
 // CSVBytes renders results as UTF-8 with a BOM (so Excel decodes it) and
-// LF line endings. A missing line number is an empty cell.
+// LF line endings. A missing line number or source hash is an empty cell.
 func CSVBytes(results Results) []byte {
 	var buf bytes.Buffer
 	buf.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
-	buf.WriteString("Absolute_Path,Hash_Type,Hash_Value,Line,Context\n")
+	buf.WriteString("Absolute_Path,Hash_Type,Hash_Value,Line,Context,Source_SHA256\n")
 	for _, path := range sortedPaths(results) {
 		for _, hit := range results[path] {
 			line := ""
 			if hit.Line != 0 {
 				line = strconv.Itoa(hit.Line)
 			}
-			fields := []string{CSVSafe(path), hit.HashType, hit.HashValue, line, CSVSafe(hit.Context)}
+			fields := []string{CSVSafe(path), hit.HashType, hit.HashValue, line, CSVSafe(hit.Context), hit.SourceSHA256}
 			for i, field := range fields {
 				fields[i] = csvField(field)
 			}
@@ -87,21 +87,25 @@ func pyJSONString(s string) string {
 
 // JSONBytes renders results exactly as Python's json.dump(rows, f, indent=2)
 // does, including the platform line ending of a text-mode file (CRLF on
-// Windows). A missing line number is null.
+// Windows). A missing line number or source hash is null.
 func JSONBytes(results Results) []byte {
 	var rows []string
 	for _, path := range sortedPaths(results) {
 		for _, hit := range results[path] {
-			line := "null"
+			line, source := "null", "null"
 			if hit.Line != 0 {
 				line = strconv.Itoa(hit.Line)
+			}
+			if hit.SourceSHA256 != "" {
+				source = pyJSONString(hit.SourceSHA256)
 			}
 			rows = append(rows, "  {\n"+
 				`    "absolute_path": `+pyJSONString(path)+",\n"+
 				`    "hash_type": `+pyJSONString(hit.HashType)+",\n"+
 				`    "hash_value": `+pyJSONString(hit.HashValue)+",\n"+
 				`    "line": `+line+",\n"+
-				`    "context": `+pyJSONString(hit.Context)+"\n"+
+				`    "context": `+pyJSONString(hit.Context)+",\n"+
+				`    "source_sha256": `+source+"\n"+
 				"  }")
 		}
 	}

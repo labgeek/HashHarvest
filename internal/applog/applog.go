@@ -58,8 +58,8 @@ var oneLine = strings.NewReplacer("\r", `\r`, "\n", `\n`)
 func write(level, name, format string, args ...any) {
 	msg := oneLine.Replace(fmt.Sprintf(format, args...))
 	now := time.Now()
-	// Python's %(asctime)s: local time with comma-separated milliseconds.
-	full := fmt.Sprintf("%s,%03d %s %s: %s\n", now.Format("2006-01-02 15:04:05"), now.Nanosecond()/1e6, level, name, msg)
+	// Local time with comma-separated milliseconds and the UTC offset.
+	full := fmt.Sprintf("%s,%03d %s %s %s: %s\n", now.Format("2006-01-02 15:04:05"), now.Nanosecond()/1e6, now.Format("-07:00"), level, name, msg)
 
 	mu.Lock()
 	defer mu.Unlock()

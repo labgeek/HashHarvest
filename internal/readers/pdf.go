@@ -323,6 +323,17 @@ type pdfDoc struct {
 	trailers []pdfDict // trailer dictionaries and cross-reference stream dicts, in file order
 	fonts    map[pdfRef]*pdfFont
 	crypt    *pdfCrypt // nil for an unencrypted document
+	decoded  int64     // bytes produced by decode so far, against maxPDFTotal
+	limitErr error     // the first size limit decode hit
+}
+
+// pdfLimitError is a size limit reached while decoding streams.
+type pdfLimitError struct{ msg string }
+
+func (e pdfLimitError) Error() string { return e.msg }
+
+func errPDFStream() error {
+	return pdfLimitError{fmt.Sprintf("a PDF stream expands beyond the %s limit", sizeText(maxPDFStream))}
 }
 
 var pdfObjRE = regexp.MustCompile(`(?:^|[^0-9A-Za-z])([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+obj|trailer`)
@@ -501,8 +512,30 @@ func (d *pdfDoc) array(v any) []any {
 	return a
 }
 
-// decode applies a stream's filter chain.
+// decode applies a stream's filter chain within the size limits. A limit
+// error is also kept on the document, so the callers that skip streams they
+// cannot decode (object streams, forms, ToUnicode maps) cannot drop it.
 func (d *pdfDoc) decode(s *pdfStream) ([]byte, error) {
+	data, err := d.decodeFilters(s)
+	if err == nil && int64(len(data)) > maxPDFStream {
+		err = errPDFStream()
+	}
+	if err == nil {
+		if d.decoded += int64(len(data)); d.decoded > maxPDFTotal {
+			err = pdfLimitError{fmt.Sprintf("PDF streams expand beyond the %s limit per file", sizeText(maxPDFTotal))}
+		}
+	}
+	if err != nil {
+		var limit pdfLimitError
+		if errors.As(err, &limit) && d.limitErr == nil {
+			d.limitErr = err
+		}
+		return nil, err
+	}
+	return data, nil
+}
+
+func (d *pdfDoc) decodeFilters(s *pdfStream) ([]byte, error) {
 	filters := d.array(s.dict["Filter"])
 	if filters == nil {
 		if f := d.resolve(s.dict["Filter"]); f != nil {
@@ -556,13 +589,16 @@ func (d *pdfDoc) decode(s *pdfStream) ([]byte, error) {
 			if end := bytes.Index(data, []byte("~>")); end >= 0 {
 				data = data[:end]
 			}
-			if data, err = io.ReadAll(ascii85.NewDecoder(bytes.NewReader(data))); err != nil {
+			if data, err = io.ReadAll(io.LimitReader(ascii85.NewDecoder(bytes.NewReader(data)), maxPDFStream+1)); err != nil {
 				return nil, err
 			}
 		case "RunLengthDecode", "RL":
 			data = runLengthDecode(data)
 		default:
 			return nil, fmt.Errorf("unsupported PDF stream filter %q", name)
+		}
+		if int64(len(data)) > maxPDFStream { // also between filters of a chain
+			return nil, errPDFStream()
 		}
 	}
 	return data, nil
@@ -574,16 +610,18 @@ func inflate(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("PDF stream: %w", err)
 	}
 	defer r.Close()
-	out, err := io.ReadAll(r)
+	out, err := io.ReadAll(io.LimitReader(r, maxPDFStream+1)) // decode reports a longer stream
 	if err != nil && len(out) == 0 {
 		return nil, fmt.Errorf("PDF stream: %w", err)
 	}
 	return out, nil // a truncated stream still yields the text before the damage
 }
 
+// runLengthDecode expands RunLengthDecode data, stopping once the output
+// passes maxPDFStream (decode then reports the limit).
 func runLengthDecode(data []byte) []byte {
 	var out []byte
-	for i := 0; i < len(data); {
+	for i := 0; i < len(data) && int64(len(out)) <= maxPDFStream; {
 		n := int(data[i])
 		i++
 		switch {
@@ -639,6 +677,9 @@ func lzwDecode(data []byte, earlyChange int) ([]byte, error) {
 			return nil, errors.New("PDF stream: invalid LZW code")
 		}
 		out = append(out, entry...)
+		if int64(len(out)) > maxPDFStream {
+			return out, nil // decode reports the limit
+		}
 		if prev != nil && len(table) < 4096 {
 			table = append(table, append(append([]byte(nil), prev...), entry[0]))
 		}
@@ -801,19 +842,26 @@ func (d *pdfDoc) pageText(p pdfPage) (string, error) {
 	return in.out.String(), nil
 }
 
-// pdfPageTexts returns the extracted text of every page, in page order.
+// pdfPageTexts returns the extracted text of every page, in page order. A
+// size limit reached anywhere in the document fails it, even where the
+// stream was optional, and takes precedence over errors it caused later.
 func pdfPageTexts(data []byte) ([]string, error) {
 	doc, err := parsePDF(data)
 	if err != nil {
 		return nil, err
 	}
 	pages, err := doc.pages()
+	if doc.limitErr != nil {
+		return nil, doc.limitErr
+	}
 	if err != nil {
 		return nil, err
 	}
 	out := make([]string, len(pages))
 	for i, p := range pages {
-		if out[i], err = doc.pageText(p); err != nil {
+		if out[i], err = doc.pageText(p); doc.limitErr != nil {
+			return nil, fmt.Errorf("page %d: %w", i+1, doc.limitErr)
+		} else if err != nil {
 			return nil, fmt.Errorf("page %d: %w", i+1, err)
 		}
 	}
@@ -850,6 +898,7 @@ type pdfInterp struct {
 	endX, endY float64 // device-space position just past the last shown glyph
 	shown      bool
 	moved      bool // an explicit positioning operator ran since the last show
+	forms      int  // forms drawn on this page, against maxPDFForms
 }
 
 func (in *pdfInterp) write(s string) {
@@ -959,6 +1008,14 @@ func (in *pdfInterp) run(content []byte, res pdfDict, depth int) {
 				xobjects, _ := in.doc.dict(res["XObject"])
 				form, ok := in.doc.resolve(xobjects[string(name)]).(*pdfStream)
 				if !ok || in.doc.name(form.dict["Subtype"]) != "Form" {
+					break
+				}
+				// Nesting is capped at 12 levels, but a form drawing itself
+				// several times per level grows exponentially; cap the total.
+				if in.forms++; in.forms > maxPDFForms {
+					if in.doc.limitErr == nil {
+						in.doc.limitErr = pdfLimitError{fmt.Sprintf("a PDF page draws more than %d forms", maxPDFForms)}
+					}
 					break
 				}
 				data, err := in.doc.decode(form)
