@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ type App struct {
 
 	mu         sync.Mutex
 	results    extractor.Results // current scan results, the source for exports and VirusTotal
-	scanCancel context.CancelFunc
+	scanCancel context.CancelCauseFunc
 	scanDone   chan struct{}
 	vtCancel   context.CancelFunc
 	vtDone     chan struct{}
@@ -170,7 +171,7 @@ func (a *App) StartScan(directory, mode string, hashTypes []string) ScanStart {
 		a.mu.Unlock()
 		return ScanStart{Status: "A scan is already running"}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancelCause(context.Background())
 	done := make(chan struct{})
 	a.scanCancel, a.scanDone = cancel, done
 	a.mu.Unlock()
@@ -180,12 +181,27 @@ func (a *App) StartScan(directory, mode string, hashTypes []string) ScanStart {
 			a.mu.Lock()
 			a.scanCancel, a.scanDone = nil, nil
 			a.mu.Unlock()
-			cancel()
+			cancel(nil)
 			close(done)
 		}()
 		a.runScan(ctx, directory, mode, hashTypes)
 	}()
 	return ScanStart{OK: true, Status: "Scanning files..."}
+}
+
+// errScanCancelled is the cancel cause when the user presses Cancel, as
+// opposed to the window closing.
+var errScanCancelled = errors.New("scan cancelled")
+
+// CancelScan stops the running scan, if any. It returns at once; the scan
+// reports scan:cancelled when it has stopped.
+func (a *App) CancelScan() {
+	a.mu.Lock()
+	cancel := a.scanCancel
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel(errScanCancelled)
+	}
 }
 
 func (a *App) runScan(ctx context.Context, directory, mode string, hashTypes []string) {
@@ -212,6 +228,11 @@ func (a *App) runScan(ctx context.Context, directory, mode string, hashTypes []s
 	})
 	flush()
 	if err != nil {
+		if errors.Is(context.Cause(ctx), errScanCancelled) {
+			// A partial scan stored or exported as if complete would mislead.
+			a.ui.emit("scan:cancelled", "Scan cancelled — nothing saved")
+			return
+		}
 		if ctx.Err() != nil {
 			return // the window is closing
 		}
@@ -667,7 +688,7 @@ func (a *App) shutdown(context.Context) {
 	scanCancel, scanDone := a.scanCancel, a.scanDone
 	a.mu.Unlock()
 	if scanCancel != nil {
-		scanCancel()
+		scanCancel(nil)
 		<-scanDone
 	}
 	a.CancelLookup()

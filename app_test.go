@@ -492,3 +492,40 @@ func TestWindowHardening(t *testing.T) {
 		t.Error("index.html must declare the Content-Security-Policy")
 	}
 }
+
+func TestCancelScan(t *testing.T) {
+	a, f := newApp(t)
+	dir := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		write(t, dir, name, md5Hash)
+	}
+	emit := a.ui.emit
+	a.ui.emit = func(event string, data any) {
+		emit(event, data)
+		if event == "scan:progress" {
+			a.CancelScan() // the user presses Cancel after the first file
+		}
+	}
+	if start := scanAndWait(t, a, dir, "text", []string{"MD5"}); !start.OK {
+		t.Fatalf("start = %+v", start)
+	}
+	if got := f.payloads["scan:cancelled"]; len(got) != 1 || got[0] != "Scan cancelled — nothing saved" {
+		t.Errorf("scan:cancelled = %v; events %v", got, f.events)
+	}
+	if len(f.payloads["scan:progress"]) != 1 || len(f.payloads["scan:finished"]) != 0 || len(f.messages) != 0 {
+		t.Errorf("events %v, messages %v; want a stop after the first file and no dialog", f.events, f.messages)
+	}
+	if scans, _ := a.db.GetScans(""); len(scans) != 0 {
+		t.Errorf("a cancelled scan must not be saved: %+v", scans)
+	}
+	if len(a.results) != 0 {
+		t.Errorf("a cancelled scan must leave nothing to export: %v", a.results)
+	}
+
+	// With nothing running, Cancel does nothing, and the next scan runs normally.
+	a.ui.emit = emit
+	a.CancelScan()
+	if start := scanAndWait(t, a, dir, "text", []string{"MD5"}); !start.OK || len(f.payloads["scan:finished"]) != 1 {
+		t.Errorf("start %+v, events %v", start, f.events)
+	}
+}

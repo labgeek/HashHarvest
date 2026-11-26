@@ -185,8 +185,11 @@ func HashFiles(ctx context.Context, dir string, types []string, cb Callbacks) (R
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-		hits, err := digestFile(path, types)
+		hits, err := digestFile(ctx, path, types)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err() // cancelled partway through this file
+			}
 			fileErrors = skipped(fileErrors, cb, path, err.Error())
 		} else {
 			results[path] = hits
@@ -207,7 +210,21 @@ func HashFiles(ctx context.Context, dir string, types []string, cb Callbacks) (R
 	return results, fileErrors, nil
 }
 
-func digestFile(path string, types []string) ([]Hit, error) {
+// ctxReader fails its next Read once ctx is cancelled, so copying a large
+// file stops promptly.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
+func digestFile(ctx context.Context, path string, types []string) ([]Hit, error) {
 	if err := requireRegularFile(path); err != nil {
 		return nil, err
 	}
@@ -225,7 +242,7 @@ func digestFile(path string, types []string) ([]Hit, error) {
 		return nil, err
 	}
 	defer f.Close()
-	if _, err := io.Copy(io.MultiWriter(writers...), f); err != nil {
+	if _, err := io.Copy(io.MultiWriter(writers...), ctxReader{ctx, f}); err != nil {
 		return nil, err
 	}
 	hits := []Hit{}
@@ -250,8 +267,11 @@ func Extract(ctx context.Context, dir string, types []string, cb Callbacks) (Res
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-		hits, err := extractFile(path, types)
+		hits, err := extractFile(ctx, path, types)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err() // cancelled partway through this file
+			}
 			fileErrors = skipped(fileErrors, cb, path, err.Error())
 		} else {
 			results[path] = hits
@@ -268,7 +288,7 @@ func Extract(ctx context.Context, dir string, types []string, cb Callbacks) (Res
 	return results, fileErrors, nil
 }
 
-func extractFile(path string, types []string) (hits []Hit, err error) {
+func extractFile(ctx context.Context, path string, types []string) (hits []Hit, err error) {
 	// Scanned files are untrusted. A parser bug must skip that one file, as
 	// Python's per-file "except Exception" did, not take down the scan.
 	defer func() {
@@ -285,7 +305,10 @@ func extractFile(path string, types []string) (hits []Hit, err error) {
 	}
 	hits = []Hit{}
 	seen := map[[2]string]bool{}
-	for _, chunk := range chunks {
+	for _, chunk := range chunks { // a PDF page or PPTX slide, or the whole text
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		for _, hit := range FindHashes(chunk.Text, types) {
 			key := [2]string{hit.HashType, hit.HashValue}
 			if seen[key] {

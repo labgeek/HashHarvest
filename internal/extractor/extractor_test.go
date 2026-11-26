@@ -343,3 +343,32 @@ func TestHashSet(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+// A file being hashed is read through ctxReader, so Cancel stops a large
+// file partway instead of after it.
+func TestContextReaderStopsMidFile(t *testing.T) {
+	ctx, cancel := context.WithCancel(bg)
+	r := ctxReader{ctx, strings.NewReader(strings.Repeat("x", 1<<20))}
+	buf := make([]byte, 1024)
+	if n, err := r.Read(buf); n != len(buf) || err != nil {
+		t.Fatalf("first read: %d, %v", n, err)
+	}
+	cancel()
+	if n, err := r.Read(buf); n != 0 || !errors.Is(err, context.Canceled) {
+		t.Errorf("read after cancel: %d, %v", n, err)
+	}
+}
+
+// Cancellation inside a file stops the scan: it is not that file failing.
+func TestCancelInsideAFileIsNotASkip(t *testing.T) {
+	dir := t.TempDir()
+	path := write(t, dir, "big.bin", strings.Repeat("x", 1<<20))
+	ctx, cancel := context.WithCancel(bg)
+	cancel()
+	if _, err := digestFile(ctx, path, nil); !errors.Is(err, context.Canceled) {
+		t.Errorf("digestFile: %v", err)
+	}
+	if _, err := extractFile(ctx, write(t, dir, "a.txt", md5Hash), nil); !errors.Is(err, context.Canceled) {
+		t.Errorf("extractFile: %v", err)
+	}
+}

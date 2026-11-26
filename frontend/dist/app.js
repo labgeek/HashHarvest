@@ -89,6 +89,8 @@ function setProgress(bar, label, value) {
 
 function setControlsEnabled(enabled) {
   for (const id of ["start", "clear", "browse", "dir"]) $(id).disabled = !enabled;
+  $("cancel").hidden = enabled;
+  $("cancel").disabled = false;
   for (const el of document.querySelectorAll("input[name=mode], input.hash-type")) el.disabled = !enabled;
 }
 
@@ -151,6 +153,18 @@ rt.EventsOn("scan:finished", (summary) => {
   showSummary(summary);
   setControlsEnabled(true);
 });
+$("cancel").addEventListener("click", () => {
+  $("cancel").disabled = true; // until the scan reports that it stopped
+  setStatus("Cancelling…");
+  App.CancelScan();
+});
+
+rt.EventsOn("scan:cancelled", (status) => {
+  resetOutput(); // the partial rows were not saved and cannot be exported
+  setStatus(status);
+  setControlsEnabled(true);
+});
+
 rt.EventsOn("scan:failed", (status) => {
   setStatus(status);
   setSortable(true);
