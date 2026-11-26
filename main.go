@@ -73,7 +73,7 @@ func loadDotenv(path string) {
 	if err != nil {
 		return
 	}
-	for _, line := range strings.Split(readers.DecodeUTF8Replace(data), "\n") {
+	for _, line := range strings.Split(readers.DecodeTextReplace(data), "\n") {
 		line = readers.PyStrip(line)
 		if line == "" || strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
 			continue

@@ -125,6 +125,15 @@ type Summary struct {
 	Status       string   `json:"status"`
 	Matches      []string `json:"matches"` // hash values found on a watchlist
 	Rows         []Row    `json:"rows,omitempty"`
+	// Skipped lists what a live scan could not read. It is empty for a
+	// loaded historical scan, whose skips are in its stored log.
+	Skipped []SkippedFile `json:"skipped,omitempty"`
+}
+
+// SkippedFile is a file or folder a scan could not read, and why.
+type SkippedFile struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
 }
 
 // ResetResults forgets the current results (the window's Clear Form and
@@ -215,6 +224,9 @@ func (a *App) runScan(ctx context.Context, directory, mode string, hashTypes []s
 		FilesScanned: result.FilesScanned(),
 		HashesFound:  result.HashesFound(),
 		SkippedFiles: result.SkippedFiles(),
+	}
+	for _, e := range result.Errors {
+		summary.Skipped = append(summary.Skipped, SkippedFile{e.Path, e.Message})
 	}
 	types := append([]string(nil), hashTypes...)
 	sort.Strings(types)
@@ -384,6 +396,23 @@ func (a *App) LoadScan(scanID int64) (*Summary, error) {
 	return summary, nil
 }
 
+// GetScanLog returns the log stored with a scan, which names every skipped
+// file and why.
+func (a *App) GetScanLog(scanID int64) (string, error) {
+	d, err := a.database()
+	if err != nil {
+		return "", err
+	}
+	log, ok, err := d.GetScanLog(scanID)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("no log is stored for scan %d", scanID)
+	}
+	return log, nil
+}
+
 // WatchlistItem is one entry of the Watchlist Manager list.
 type WatchlistItem struct {
 	ID    int64  `json:"id"`
@@ -478,7 +507,7 @@ func (a *App) ImportFile(watchlistID int64) string {
 	if err != nil {
 		return "Could not read file: " + err.Error()
 	}
-	return a.importHashes(watchlistID, readers.DecodeUTF8Replace(data), filepath.Base(path))
+	return a.importHashes(watchlistID, readers.DecodeTextReplace(data), filepath.Base(path))
 }
 
 func (a *App) importHashes(watchlistID int64, text, source string) string {

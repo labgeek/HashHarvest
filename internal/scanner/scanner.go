@@ -66,7 +66,10 @@ func (s Scanner) Scan(ctx context.Context, dir string, onEvent func(Event)) (*Re
 	}
 	cb := extractor.Callbacks{
 		Progress: func(percent int) { emit(Progress{percent}) },
-		Status:   func(message string) { emit(FileSkipped{message}) },
+		Status: func(message string) {
+			applog.Warn(loggerName, "%s", message) // kept in the stored scan log
+			emit(FileSkipped{message})
+		},
 		Result: func(path, fileType string, hit extractor.Hit) {
 			emit(Finding{path, fileType, hit})
 		},

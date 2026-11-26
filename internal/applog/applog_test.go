@@ -56,3 +56,14 @@ func TestAppendRotating(t *testing.T) {
 func TestAppendRotatingToUnwritablePathIsSilent(t *testing.T) {
 	appendRotating(filepath.Join(t.TempDir(), "missing", "app.log"), "dropped\n") // must not panic
 }
+
+// File names reach the log, and on some systems may contain line breaks; one
+// message must stay one line so it cannot forge further entries.
+func TestMessagesStayOnOneLine(t *testing.T) {
+	stop := Capture()
+	Warn("x", "Skipped %s", "a\r\n2026-01-01 00:00:00,000 INFO x: forged")
+	got := stop()
+	if strings.Count(got, "\n") != 1 || !strings.Contains(got, `WARNING x: Skipped a\r\n2026`) {
+		t.Errorf("log = %q", got)
+	}
+}

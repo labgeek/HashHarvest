@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf16"
 )
 
 const (
@@ -119,9 +120,6 @@ func TestPyCSVRows(t *testing.T) {
 			t.Errorf("%s: got %q, %v; want %q", tc.name, got, err, tc.want)
 		}
 	}
-	if _, err := pyCSVRows(strings.Repeat("x", csvFieldLimit+1)); err == nil {
-		t.Error("a field over the size limit must be an error")
-	}
 }
 
 func TestReadJSON(t *testing.T) {
@@ -145,11 +143,50 @@ func TestReadJSON(t *testing.T) {
 			t.Errorf("%s: got %q, %v; want %q", tc.in, got, err, tc.want)
 		}
 	}
-	for _, bad := range []string{`{"a": `, `{"a": 1} trailing`, "\xef\xbb\xbf{}", "{\"a\": \"\xff\"}", ``,
+	for _, bad := range []string{`{"a": `, `{"a": 1} trailing`, "{\"a\": \"\xff\"}", ``,
 		`{NaN: 1}`, `{"a": 1, Infinity: 2}`, `-NaN`, `NaNx`, `[nan]`, `[1 NaN]`} {
 		if _, err := ReadFile(writeFile(t, "f.json", []byte(bad))); err == nil {
 			t.Errorf("%q: expected an error", bad)
 		}
+	}
+}
+
+func TestReadJSONWithByteOrderMark(t *testing.T) {
+	got, err := ReadFile(writeFile(t, "f.json", []byte("\xef\xbb\xbf{\"md5\": \""+md5Hash+"\"}")))
+	if want := "md5\n" + md5Hash; err != nil || got != want {
+		t.Errorf("got %q, %v; want %q", got, err, want)
+	}
+}
+
+func TestReadJSONLines(t *testing.T) {
+	const bom = "\xef\xbb\xbf"
+	cases := []struct{ name, in, want string }{
+		{"objects", `{"a": 1}` + "\n" + `{"md5": "` + md5Hash + `"}` + "\n", "a\n1\nmd5\n" + md5Hash},
+		{"CRLF, blank lines, no final newline", `{"a": 1}` + "\r\n\r\n  \r\n[2, 3]", "a\n1\n2\n3"},
+		{"scalars and NaN", `"x"` + "\n" + `{"b": NaN}` + "\n7\n", "x\nb\nnan\n7"},
+		{"UTF-8 byte-order mark", bom + `{"a": 1}` + "\n" + `{"b": 2}`, "a\n1\nb\n2"},
+	}
+	for _, tc := range cases {
+		got, err := ReadFile(writeFile(t, "f.json", []byte(tc.in)))
+		if err != nil || got != tc.want {
+			t.Errorf("%s: got %q, %v; want %q", tc.name, got, err, tc.want)
+		}
+	}
+	// One bad line means the file is neither JSON nor JSON Lines.
+	for _, bad := range []string{`{"a": 1}` + "\n{broken\n", `{"a": 1}` + "\n" + `{"b":` + "\n2", `{"a": 1} {"b": 2}`} {
+		if _, err := ReadFile(writeFile(t, "f.json", []byte(bad))); err == nil {
+			t.Errorf("%q: expected an error", bad)
+		}
+	}
+}
+
+func TestCSVLargeFieldIsScanned(t *testing.T) {
+	// Python's csv module stops at 131072 characters; evidence exports with
+	// large cells (message bodies, base64) must still be scanned.
+	big := strings.Repeat("y", 200_000)
+	got, err := ReadFile(writeFile(t, "f.csv", []byte("x,\""+big+" "+md5Hash+"\"\nlast,row\n")))
+	if want := "x " + big + " " + md5Hash + "\nlast row"; err != nil || got != want {
+		t.Errorf("err = %v, %d bytes; want %d", err, len(got), len(want))
 	}
 }
 
@@ -407,6 +444,65 @@ func TestRunLengthDecode(t *testing.T) {
 	for _, tc := range cases {
 		if got := string(runLengthDecode(tc.in)); got != tc.want {
 			t.Errorf("runLengthDecode(%v) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// utf16Bytes encodes s as UTF-16, little- or big-endian, with or without a
+// byte-order mark.
+func utf16Bytes(s string, bigEndian, bom bool) []byte {
+	units := utf16.Encode([]rune(s))
+	if bom {
+		units = append([]uint16{0xFEFF}, units...)
+	}
+	var b []byte
+	for _, u := range units {
+		if bigEndian {
+			b = append(b, byte(u>>8), byte(u))
+		} else {
+			b = append(b, byte(u), byte(u>>8))
+		}
+	}
+	return b
+}
+
+func TestUTF16IsDecoded(t *testing.T) {
+	const text = "Windows log\r\nmd5 " + md5Hash + " café\r\n"
+	want := "Windows log\nmd5 " + md5Hash + " café\n"
+	for _, enc := range []struct {
+		name           string
+		bigEndian, bom bool
+	}{{"LE with BOM", false, true}, {"BE with BOM", true, true}, {"LE without BOM", false, false}, {"BE without BOM", true, false}} {
+		data := utf16Bytes(text, enc.bigEndian, enc.bom)
+		for _, ext := range []string{".txt", ".log", ".md"} {
+			if got, err := ReadFile(writeFile(t, "f"+ext, data)); err != nil || got != want {
+				t.Errorf("%s %s: got %q, %v; want %q", enc.name, ext, got, err, want)
+			}
+		}
+		if got, err := ReadFile(writeFile(t, "f.csv", utf16Bytes("a,"+md5Hash+"\r\n", enc.bigEndian, enc.bom))); err != nil || got != "a "+md5Hash {
+			t.Errorf("%s csv: got %q, %v", enc.name, got, err)
+		}
+		if got, err := ReadFile(writeFile(t, "f.json", utf16Bytes(`{"md5": "`+md5Hash+`"}`, enc.bigEndian, enc.bom))); err != nil || got != "md5\n"+md5Hash {
+			t.Errorf("%s json: got %q, %v", enc.name, got, err)
+		}
+		if got, err := ReadFile(writeFile(t, "f.xml", utf16Bytes("<r>"+md5Hash+"</r>", enc.bigEndian, enc.bom))); err != nil || got != md5Hash {
+			t.Errorf("%s xml: got %q, %v", enc.name, got, err)
+		}
+	}
+}
+
+func TestBinaryIsNotMisreadAsUTF16(t *testing.T) {
+	cases := map[string][]byte{
+		"control characters":   {0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x04, 0x00},
+		"odd length":           []byte("a\x00b\x00c\x00d\x00e"),
+		"unpaired surrogate":   {'a', 0x00, 0x00, 0xD8, 'b', 0x00, 'c', 0x00},
+		"NULs on both sides":   {'a', 0x00, 0x00, 'b', 'c', 0x00, 0x00, 'd'},
+		"too few NUL bytes":    []byte("abcdefgh\x00ijkl"),
+		"NUL character U+0000": {'a', 0x00, 0x00, 0x00, 'b', 0x00, 'c', 0x00},
+	}
+	for name, data := range cases {
+		if got, err := ReadFile(writeFile(t, "f.txt", data)); err != nil || got != newlines.Replace(latin1(data)) {
+			t.Errorf("%s: got %q, %v; want the bytes read as Latin-1", name, got, err)
 		}
 	}
 }

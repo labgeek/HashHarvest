@@ -62,7 +62,7 @@
       <dl class="summary">
         <dt>Files Scanned</dt><dd id="files-scanned">0</dd>
         <dt>Hashes Found</dt><dd id="hashes-found">0</dd>
-        <dt>Skipped Files</dt><dd id="skipped-files">0</dd>
+        <dt>Skipped Files</dt><dd><span id="skipped-files">0</span> <button id="show-skipped" type="button" hidden>View list</button></dd>
       </dl>
     </fieldset>
   </div>
@@ -109,9 +109,27 @@
     </table>
   </div>
   <div class="row buttons end">
+    <button id="view-log" type="button">View Log</button>
     <button id="load-scan" type="button">Load Selected</button>
     <button type="button" data-close>Close</button>
   </div>
+</dialog>
+
+<dialog id="skipped-dialog" aria-labelledby="skipped-title">
+  <h2 id="skipped-title">Skipped Files</h2>
+  <div class="table-wrap dialog-table">
+    <table id="skipped">
+      <thead><tr><th>Path</th><th>Reason</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="row buttons end"><button type="button" data-close>Close</button></div>
+</dialog>
+
+<dialog id="log-dialog" aria-labelledby="log-title">
+  <h2 id="log-title">Scan Log</h2>
+  <pre id="log-text" class="log-text" tabindex="0"></pre>
+  <div class="row buttons end"><button type="button" data-close>Close</button></div>
 </dialog>
 
 <dialog id="watchlist-dialog" aria-labelledby="watchlist-title">

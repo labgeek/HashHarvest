@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows checks and Wails build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install the Wails CLI at the version go.mod requires
+        shell: pwsh
+        run: |
+          $version = go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$version"
+      # gofmt, go vet, go test with coverage, go test -race (when a 64-bit
+      # gcc is present), cross-compiles and wails build: the same steps as a
+      # local run.
+      - name: scripts/check.ps1
+        shell: pwsh
+        run: ./scripts/check.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: HashHarvest-windows-amd64
+          path: packaging/wails/bin/HashHarvest.exe
+          if-no-files-found: error
+      # ponytail: non-blocking until a hosted runner is shown to provide a
+      # desktop session that UI Automation can drive; make it blocking then.
+      - name: GUI smoke test (non-blocking)
+        continue-on-error: true
+        shell: pwsh
+        run: ./scripts/smoke-gui.ps1
+
+  linux:
+    name: Linux vet and tests
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0" # the GUI package needs no cgo to compile and test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test -count=1 ./... # includes the FIFO test, which runs only on Unix

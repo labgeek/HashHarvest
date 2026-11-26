@@ -16,16 +16,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"unicode/utf16"
 	"unicode/utf8"
 )
 
-// csvFieldLimit is Python's default csv.field_size_limit().
-const csvFieldLimit = 131072
-
 // pyCSVRows parses text like csv.reader with the default "excel" dialect.
 // Unlike encoding/csv it keeps empty lines as empty rows, tolerates stray
-// quotes, and never trims fields.
+// quotes, and never trims fields. Unlike csv.reader it has no field size
+// limit: that skipped the whole file, and the input is already in memory.
 func pyCSVRows(text string) ([][]string, error) {
 	const (
 		startRecord = iota
@@ -48,9 +45,6 @@ func pyCSVRows(text string) ([][]string, error) {
 		field = field[:0]
 	}
 	add := func(c rune) error {
-		if len(field) >= csvFieldLimit {
-			return fmt.Errorf("field larger than field limit (%d)", csvFieldLimit)
-		}
 		field = append(field, c)
 		return nil
 	}
@@ -185,26 +179,65 @@ func splitLinesKeepEnds(text string) []string {
 }
 
 // readJSON flattens every key and non-null scalar to one line each, in
-// document order, formatted as Python's str() would.
+// document order, formatted as Python's str() would. The file may hold one
+// JSON document or JSON Lines (one value per line), with or without a
+// byte-order mark.
 func readJSON(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
+	if text, ok := decodeUTF16(data); ok {
+		data = []byte(text)
+	}
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	if !utf8.Valid(data) {
 		return "", errors.New("'utf-8' codec can't decode file: invalid UTF-8")
 	}
-	data = pyJSONNonFinite(data)
-	if !json.Valid(data) {
-		return "", errors.New("invalid JSON")
+	values, err := jsonDocument(data)
+	if errors.Is(err, errInvalidJSON) {
+		values, err = jsonLines(data)
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber()
-	values, err := jsonValues(dec)
 	if err != nil {
 		return "", err
 	}
 	return strings.Join(values, "\n"), nil
+}
+
+var errInvalidJSON = errors.New("invalid JSON")
+
+// jsonDocument flattens data holding exactly one JSON value.
+func jsonDocument(data []byte) ([]string, error) {
+	data = pyJSONNonFinite(data)
+	if !json.Valid(data) {
+		return nil, errInvalidJSON
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	return jsonValues(dec)
+}
+
+// jsonLines flattens data holding one JSON value per non-blank line. A raw
+// line break cannot occur inside a JSON value's strings, so splitting on it
+// is safe. Any invalid line rejects the whole file.
+func jsonLines(data []byte) ([]string, error) {
+	var values []string
+	documents := 0
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if line = bytes.TrimSpace(line); len(line) == 0 {
+			continue
+		}
+		v, err := jsonDocument(line)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, v...)
+		documents++
+	}
+	if documents == 0 {
+		return nil, errInvalidJSON
+	}
+	return values, nil
 }
 
 // pyJSONNonFinite rewrites the NaN, Infinity and -Infinity literals Python's
@@ -360,20 +393,12 @@ func pyFloatRepr(f float64) string {
 	return fixed
 }
 
-// xmlDecoder builds a decoder that accepts the encodings expat does
-// (UTF-8, UTF-16 with a BOM, Latin-1, ASCII).
+// xmlDecoder builds a decoder that accepts UTF-8, UTF-16 (with a
+// byte-order mark, or without one as decodeUTF16 detects it), Latin-1 and
+// ASCII.
 func xmlDecoder(data []byte) *xml.Decoder {
-	if len(data) >= 2 && (data[0] == 0xFF && data[1] == 0xFE || data[0] == 0xFE && data[1] == 0xFF) {
-		bigEndian := data[0] == 0xFE
-		units := make([]uint16, 0, len(data)/2)
-		for i := 2; i+1 < len(data); i += 2 {
-			if bigEndian {
-				units = append(units, uint16(data[i])<<8|uint16(data[i+1]))
-			} else {
-				units = append(units, uint16(data[i+1])<<8|uint16(data[i]))
-			}
-		}
-		data = []byte(string(utf16.Decode(units)))
+	if text, ok := decodeUTF16(data); ok {
+		data = []byte(text)
 	}
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.CharsetReader = func(charset string, input io.Reader) (io.Reader, error) {

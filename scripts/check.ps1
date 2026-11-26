@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Local equivalent of the "Go port" CI workflow (Windows).
+  All checks, run locally and by the Windows job of .github/workflows/ci.yml.
 
 .DESCRIPTION
   Runs, in order: gofmt check, go vet, go test with coverage,
@@ -42,11 +42,14 @@ if ($gcc -and (gcc -dumpmachine) -match "x86_64") {
   Write-Host "==> go test -race SKIPPED: needs a 64-bit gcc (x86_64-w64-mingw32) on PATH"
 }
 
+# Cross-compiles never use cgo: the race step above may have turned it on,
+# and the Windows gcc cannot build Go's C runtime for other systems.
+$env:CGO_ENABLED = "0"
 foreach ($target in "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64") {
   $env:GOOS, $env:GOARCH = $target.Split("/")
   Step "cross-compile internal/... for $target" { go build ./internal/... }
 }
-Remove-Item Env:GOOS, Env:GOARCH
+Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
 
 if (-not $SkipBuild) {
   Step "wails build" { wails build -trimpath }

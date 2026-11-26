@@ -153,7 +153,8 @@ func TestScanSavesHistoryHighlightsWatchlistAndExports(t *testing.T) {
 	}
 	summary := f.payloads["scan:finished"][0].(Summary)
 	want := Summary{FilesScanned: 3, HashesFound: 3, SkippedFiles: 1,
-		Status: "Scan complete — saved to database. — ⚠ 2 watchlist hits", Matches: []string{md5Hash}}
+		Skipped: []SkippedFile{{filepath.Join(dir, "bad.json"), "invalid JSON"}},
+		Status:  "Scan complete — saved to database. — ⚠ 2 watchlist hits", Matches: []string{md5Hash}}
 	if !reflect.DeepEqual(summary, want) {
 		t.Errorf("summary = %+v", summary)
 	}
@@ -171,6 +172,12 @@ func TestScanSavesHistoryHighlightsWatchlistAndExports(t *testing.T) {
 	}
 	if log, ok, _ := a.db.GetScanLog(s.ID); !ok || !strings.Contains(log, "Scan complete: files=3 hashes=3 skipped=1") {
 		t.Errorf("stored log = %q", log)
+	}
+	if log, err := a.GetScanLog(s.ID); err != nil || !strings.Contains(log, "Skipped "+filepath.Join(dir, "bad.json")+": invalid JSON") {
+		t.Errorf("GetScanLog = %q, %v", log, err)
+	}
+	if _, err := a.GetScanLog(s.ID + 100); err == nil {
+		t.Error("the log of a missing scan must be an error")
 	}
 
 	// Export writes exactly what the extractor's exporter produces.
@@ -314,6 +321,15 @@ func TestWatchlistManager(t *testing.T) {
 	if status := a.ImportFile(id); status != "Added 1 new hash from iocs.csv (1 already present)." {
 		t.Errorf("file import: %q", status)
 	}
+	// A UTF-16 export (as Windows tools often write) is decoded, not read as noise.
+	utf16le := "\xff\xfe"
+	for _, c := range "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824\r\n" {
+		utf16le += string([]byte{byte(c), 0})
+	}
+	f.pick = write(t, t.TempDir(), "iocs-utf16.txt", utf16le)
+	if status := a.ImportFile(id); status != "Added 1 new hash from iocs-utf16.txt (0 already present)." {
+		t.Errorf("UTF-16 file import: %q", status)
+	}
 	f.pick = filepath.Join(t.TempDir(), "gone.txt")
 	if status := a.ImportFile(id); !strings.HasPrefix(status, "Could not read file: ") {
 		t.Errorf("unreadable file: %q", status)
@@ -322,7 +338,7 @@ func TestWatchlistManager(t *testing.T) {
 	if status := a.ImportFile(id); status != "" {
 		t.Errorf("cancelled picker: %q", status)
 	}
-	if items, _ := a.GetWatchlists(); items[0].Label != "known bad  (2 hashes)" {
+	if items, _ := a.GetWatchlists(); items[0].Label != "known bad  (3 hashes)" {
 		t.Errorf("label = %q", items[0].Label)
 	}
 
@@ -330,7 +346,7 @@ func TestWatchlistManager(t *testing.T) {
 	if deleted, _ := a.DeleteWatchlist(id); deleted {
 		t.Error("deleted despite answering No")
 	}
-	if f.lastMessage() != `question|Delete Watchlist|Delete "known bad" and all 2 of its entries?` {
+	if f.lastMessage() != `question|Delete Watchlist|Delete "known bad" and all 3 of its entries?` {
 		t.Errorf("confirmation = %q", f.lastMessage())
 	}
 	f.answer = "Yes"
@@ -438,6 +454,18 @@ func TestLoadDotenv(t *testing.T) {
 		}
 	}
 	loadDotenv(filepath.Join(t.TempDir(), "missing")) // must not panic
+
+	// Windows PowerShell 5.1's `>` writes UTF-16 LE with a byte-order mark.
+	utf16le := "\xff\xfe"
+	for _, c := range "HH_U16=from-utf16\r\n" {
+		utf16le += string([]byte{byte(c), 0})
+	}
+	t.Setenv("HH_U16", "")
+	os.Unsetenv("HH_U16")
+	loadDotenv(write(t, t.TempDir(), ".env", utf16le))
+	if got := os.Getenv("HH_U16"); got != "from-utf16" {
+		t.Errorf("HH_U16 = %q from a UTF-16 .env", got)
+	}
 }
 
 func TestInfo(t *testing.T) {
