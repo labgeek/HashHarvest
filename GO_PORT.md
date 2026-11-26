@@ -33,8 +33,8 @@ Credential Manager calls (`syscall`), and the VirusTotal client.
 ## Prerequisites
 
 - **Go 1.26 or newer.** `go.mod` declares 1.26, the minimum `modernc.org/sqlite` requires.
-- **Wails CLI v2.15.0**, the same version as in `go.mod`:
-  `go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0`
+- **Wails CLI v2.17.1**, the same version as in `go.mod`:
+  `go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1`
 - **Microsoft Edge WebView2 Runtime.** It ships with Windows 10 (21H2+) and 11.
 - *Optional, for `go test -race`:* a 64-bit MinGW gcc (`x86_64-w64-mingw32`) on `PATH`, with `CGO_ENABLED=1`.
   `winget install BrechtSanders.WinLibs.POSIX.UCRT` provides one; `scripts\check.ps1` finds it even when

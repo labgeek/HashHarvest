@@ -23,12 +23,12 @@ HashHarvest (v1.0.0) is a desktop tool for working with cryptographic hashes (MD
 
 ### Prerequisites
 
-Windows 10/11 with the WebView2 Runtime (included in Windows 10 21H2+ and Windows 11). To build, you also need Go 1.26 or newer and the Wails CLI v2.15.0.
+Windows 10/11 with the WebView2 Runtime (included in Windows 10 21H2+ and Windows 11). To build, you also need Go 1.26 or newer and the Wails CLI v2.17.1.
 
 ### Build
 
 ```powershell
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
 wails build -trimpath
 ```
 
