@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Local equivalent of the "Go port" CI workflow (Windows).
+  All checks, run locally and by the Windows job of .github/workflows/ci.yml.
 
 .DESCRIPTION
   Runs, in order: gofmt check, go vet, go test with coverage,
