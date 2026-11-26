@@ -898,6 +898,7 @@ type pdfInterp struct {
 	endX, endY float64 // device-space position just past the last shown glyph
 	shown      bool
 	moved      bool // an explicit positioning operator ran since the last show
+	forms      int  // forms drawn on this page, against maxPDFForms
 }
 
 func (in *pdfInterp) write(s string) {
@@ -1007,6 +1008,14 @@ func (in *pdfInterp) run(content []byte, res pdfDict, depth int) {
 				xobjects, _ := in.doc.dict(res["XObject"])
 				form, ok := in.doc.resolve(xobjects[string(name)]).(*pdfStream)
 				if !ok || in.doc.name(form.dict["Subtype"]) != "Form" {
+					break
+				}
+				// Nesting is capped at 12 levels, but a form drawing itself
+				// several times per level grows exponentially; cap the total.
+				if in.forms++; in.forms > maxPDFForms {
+					if in.doc.limitErr == nil {
+						in.doc.limitErr = pdfLimitError{fmt.Sprintf("a PDF page draws more than %d forms", maxPDFForms)}
+					}
 					break
 				}
 				data, err := in.doc.decode(form)

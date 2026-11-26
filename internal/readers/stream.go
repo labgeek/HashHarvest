@@ -27,6 +27,9 @@ var (
 	maxPDFSize   int64 = 512 << 20
 	maxPDFStream int64 = 64 << 20
 	maxPDFTotal  int64 = 1 << 30
+	// maxPDFForms caps the form XObjects drawn on one page: a form that
+	// draws itself repeatedly would otherwise take effectively forever.
+	maxPDFForms = 100_000
 	// textReadSize is how many bytes StreamText reads at a time.
 	textReadSize = 1 << 20
 )
