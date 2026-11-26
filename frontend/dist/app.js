@@ -448,6 +448,32 @@ $("vt-dialog").addEventListener("close", () => {
   App.CancelLookup();
 });
 
+// ---- theme ---------------------------------------------------------------
+
+// Follows the OS until the button is used; after that the choice is remembered.
+// Storage can be unavailable: the choice then lasts only until the app closes.
+const osDark = matchMedia("(prefers-color-scheme: dark)");
+let chosenTheme = null;
+try { chosenTheme = localStorage.getItem("theme"); } catch {}
+if (chosenTheme !== "dark" && chosenTheme !== "light") chosenTheme = null;
+
+function applyTheme() {
+  const theme = chosenTheme || (osDark.matches ? "dark" : "light");
+  document.documentElement.dataset.theme = theme;
+  $("theme").textContent = theme === "dark" ? "Light mode" : "Dark mode";
+  // The native title bar (Windows only); the system default follows the OS by itself.
+  if (!chosenTheme) rt.WindowSetSystemDefaultTheme();
+  else if (theme === "dark") rt.WindowSetDarkTheme();
+  else rt.WindowSetLightTheme();
+}
+applyTheme();
+osDark.addEventListener("change", applyTheme);
+$("theme").addEventListener("click", () => {
+  chosenTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  try { localStorage.setItem("theme", chosenTheme); } catch {}
+  applyTheme();
+});
+
 // ---- start-up ------------------------------------------------------------
 
 App.Info().then((info) => {

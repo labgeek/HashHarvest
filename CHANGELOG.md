@@ -5,6 +5,14 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ---
 
+## [11-26-2026 13:16:38] — v1.0.1
+
+### Added
+- Dark/light theme toggle button in the app header; the app follows the Windows theme until you use it, then remembers your choice, and sets the title bar to match
+
+### Changed
+- Version 1.0.1
+
 ## [11-26-2026 13:09:04]
 
 ### Changed
