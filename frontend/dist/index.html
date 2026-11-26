@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HashHarvest</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="header">
+  <div>
+    <h1 class="title">HashHarvest</h1>
+    <div class="subtitle">Multi-Algorithm File Hash Analysis</div>
+  </div>
+  <div class="header-right">
+    <div id="version" class="version"></div>
+    <div id="build-date" class="build-date"></div>
+  </div>
+</header>
+
+<main class="content">
+  <div class="controls">
+    <fieldset>
+      <legend>File Scan Configuration</legend>
+      <div class="row">
+        <label for="dir">Input Directory</label>
+        <input id="dir" type="text" placeholder="Select the directory containing files to scan">
+        <button id="browse" type="button">Select Input Folder</button>
+      </div>
+      <div class="row" role="radiogroup" aria-label="Scan Mode">
+        <span class="label">Scan Mode</span>
+        <label><input type="radio" name="mode" value="text" checked> Find hashes in text</label>
+        <label><input type="radio" name="mode" value="file"> Hash the files</label>
+      </div>
+      <div class="row" role="group" aria-label="Hash Types">
+        <span class="label">Hash Types</span>
+        <label><input type="checkbox" class="hash-type" value="MD5" checked> MD5</label>
+        <label><input type="checkbox" class="hash-type" value="SHA1" checked> SHA1</label>
+        <label><input type="checkbox" class="hash-type" value="SHA256" checked> SHA256</label>
+        <label><input type="checkbox" class="hash-type" value="SHA512" checked> SHA512</label>
+      </div>
+      <label for="progress" class="block-label">Progress</label>
+      <div class="progress-row">
+        <progress id="progress" max="100" value="0"></progress>
+        <span id="progress-text">0%</span>
+      </div>
+      <div class="row buttons">
+        <button id="start" type="button">Start Scan</button>
+        <button id="clear" type="button">Clear Form</button>
+        <button id="history" type="button">Scan History</button>
+        <button id="watchlist" type="button">Watchlist</button>
+        <button id="virustotal" type="button">VirusTotal</button>
+      </div>
+      <div class="row buttons">
+        <button id="export-csv" type="button" disabled>Export CSV</button>
+        <button id="export-json" type="button" disabled>Export JSON</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Scan Summary</legend>
+      <dl class="summary">
+        <dt>Files Scanned</dt><dd id="files-scanned">0</dd>
+        <dt>Hashes Found</dt><dd id="hashes-found">0</dd>
+        <dt>Skipped Files</dt><dd id="skipped-files">0</dd>
+      </dl>
+    </fieldset>
+  </div>
+
+  <fieldset class="results">
+    <legend>Results</legend>
+    <div class="row">
+      <input id="filter" type="search" placeholder="Filter results…" aria-label="Filter results">
+      <label><input id="show-context" type="checkbox"> Show Context</label>
+    </div>
+    <div class="table-wrap">
+      <table id="results" class="hide-context">
+        <thead><tr>
+          <th data-col="path">Source File</th>
+          <th data-col="fileType">File Type</th>
+          <th data-col="hashType">Hash Type</th>
+          <th data-col="hashValue">Hash Value</th>
+          <th data-col="line" class="ctx">Line</th>
+          <th data-col="context" class="ctx">Context</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </fieldset>
+</main>
+
+<footer id="status" class="status" role="status">Ready</footer>
+
+<div id="menu" class="menu" role="menu" hidden>
+  <button type="button" role="menuitem" data-action="hash">Copy Hash</button>
+  <button type="button" role="menuitem" data-action="row">Copy Row</button>
+</div>
+
+<dialog id="history-dialog" aria-labelledby="history-title">
+  <h2 id="history-title">Scan History</h2>
+  <div class="row">
+    <label for="time-range">Show:</label>
+    <select id="time-range"></select>
+  </div>
+  <div class="table-wrap dialog-table">
+    <table id="scans">
+      <thead><tr><th>Date / Time</th><th>Directory</th><th>Files</th><th>Hashes Found</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="row buttons end">
+    <button id="load-scan" type="button">Load Selected</button>
+    <button type="button" data-close>Close</button>
+  </div>
+</dialog>
+
+<dialog id="watchlist-dialog" aria-labelledby="watchlist-title">
+  <h2 id="watchlist-title">Watchlist Manager</h2>
+  <fieldset>
+    <legend>Watchlists</legend>
+    <div class="watchlists">
+      <select id="watchlists" size="6" aria-label="Watchlists"></select>
+      <div class="stack">
+        <input id="new-name" type="text" placeholder="Watchlist name" aria-label="Watchlist name">
+        <button id="new-watchlist" type="button">New…</button>
+        <button id="delete-watchlist" type="button">Delete Selected</button>
+      </div>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Import hashes into selected watchlist</legend>
+    <textarea id="paste" rows="5" aria-label="Hashes to import"
+      placeholder="Paste hashes here — one per line, CSV, or any free text.&#10;MD5 / SHA1 / SHA256 / SHA512 values are extracted automatically."></textarea>
+    <div class="row">
+      <button id="import-file" type="button">Browse File…</button>
+      <button id="import-text" type="button">Import from Text</button>
+      <span id="import-status" role="status"></span>
+    </div>
+  </fieldset>
+  <div class="row buttons end"><button type="button" data-close>Close</button></div>
+</dialog>
+
+<dialog id="vt-dialog" aria-labelledby="vt-title">
+  <h2 id="vt-title">VirusTotal Lookup</h2>
+  <div class="row">
+    <label for="api-key">API Key</label>
+    <input id="api-key" type="password" placeholder="Paste your VirusTotal API key" autocomplete="off">
+    <a href="#" id="key-link">Get a key</a>
+    <span id="env-note" hidden>(from VT_API_KEY)</span>
+  </div>
+  <label class="row"><input id="secure" type="checkbox"> Store key in OS keychain (encrypted at rest)</label>
+  <div class="progress-row">
+    <button id="lookup" type="button"></button>
+    <progress id="vt-progress" max="100" value="0"></progress>
+    <span id="vt-progress-text">0%</span>
+  </div>
+  <div class="table-wrap dialog-table">
+    <table id="vt-table">
+      <thead><tr><th>Hash</th><th>Verdict</th><th>Detections</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="row buttons end"><button type="button" data-close>Close</button></div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

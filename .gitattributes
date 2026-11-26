@@ -1,0 +1,6 @@
+# Keep binary fixtures and assets byte-for-byte
+*.pdf binary
+*.png binary
+*.ico binary
+# gofmt expects LF, also on Windows checkouts
+*.go text eol=lf

@@ -1,0 +1,25 @@
+# Secrets & local dev database
+.env
+*.db
+
+# Local tooling
+.claude/
+
+# Dev sample inputs (not part of the repo)
+testFiles/
+onfile/
+
+# Track only these scripts
+scripts/*
+!scripts/check.ps1
+!scripts/smoke-gui.ps1
+
+docs/
+
+# Go / Wails build outputs
+coverage.out
+packaging/wails/bin/
+frontend/wailsjs/
+*-res.syso
+# frontend/dist is the Wails UI source (embedded by main.go), not a build output
+!frontend/dist/

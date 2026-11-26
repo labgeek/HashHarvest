@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "HashHarvest",
+  "outputfilename": "HashHarvest",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "",
+  "build:dir": "packaging/wails",
+  "author": {
+    "name": "JD Durick - labgeek"
+  },
+  "info": {
+    "companyName": "labgeek",
+    "productName": "HashHarvest",
+    "productVersion": "0.8.0",
+    "copyright": "Copyright (c) JD Durick. MIT License.",
+    "comments": "Extracts cryptographic hashes from files."
+  }
+}

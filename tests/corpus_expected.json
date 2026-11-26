@@ -1,0 +1,5 @@
+[
+  {"file": "alpha.txt", "hash_type": "MD5", "hash_value": "5d41402abc4b2a76b9719d911017c592"},
+  {"file": "alpha.txt", "hash_type": "SHA256", "hash_value": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"},
+  {"file": "beta.log", "hash_type": "SHA1", "hash_value": "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"}
+]
