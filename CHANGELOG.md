@@ -33,6 +33,7 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 - A PDF form that draws itself could hang a scan
 
 ### Security
+- Wails upgraded from v2.15.0 to v2.17.1: v2.17.0 closes a hole in `wails dev` through which any web page open in the developer's browser could call the app's methods (released builds were not affected), and v2.17.1 fixes a Linux-only issue
 - Added a Content-Security-Policy to the app window and disabled opening files by dropping them on it
 
 ## [11-26-2026 08:27:40]

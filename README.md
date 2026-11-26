@@ -45,10 +45,10 @@ It exits `0` if everything was scanned and `3` if something was skipped. See [Co
 
 ## Build from source
 
-You need Go 1.26 or newer and the Wails CLI v2.15.0. No C compiler, Node.js or npm is needed.
+You need Go 1.26 or newer and the Wails CLI v2.17.1. No C compiler, Node.js or npm is needed.
 
 ```powershell
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
 wails build -trimpath                      # packaging\wails\bin\HashHarvest.exe
 go build -trimpath ./cmd/hashharvest-cli   # hashharvest-cli.exe
 go test ./...
