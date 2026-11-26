@@ -35,17 +35,19 @@ const usage = `Usage: hashharvest-cli [flags] <folder>
 
 Scan <folder> for MD5, SHA1, SHA256 and SHA512 hashes, or hash its files.
 Results go to standard output, or with -o to a file that gets a
-<file>.manifest.json next to it. Skipped files are listed on standard error.
+<file>.manifest.json next to it. Reported skips are listed on standard error.
+Text mode silently excludes unsupported extensions and unsearched document parts.
+See USAGE.md for coverage and link restrictions.
 
 Flags:
 `
 
 const exitHelp = `
 Exit codes:
-  0  everything was scanned
+  0  scan and output completed without reported skips (not a coverage guarantee)
   1  the scan or writing its output failed, or it was cancelled
   2  the command was wrong
-  3  the scan finished, but something was skipped
+  3  the scan finished with reported skips
 `
 
 func main() {
@@ -109,7 +111,7 @@ func parse(args []string, stdout, stderr io.Writer) (opts options, code int, don
 		flags.PrintDefaults()
 		fmt.Fprint(stderr, exitHelp)
 	}
-	flags.StringVar(&opts.mode, "mode", "text", `"text" finds hashes in documents; "file" hashes every file`)
+	flags.StringVar(&opts.mode, "mode", "text", `"text" finds hashes in documents; "file" hashes eligible regular files regardless of extension`)
 	types := flags.String("types", strings.Join(extractor.HashTypes, ","), "comma-separated hash types")
 	flags.StringVar(&opts.format, "format", "", `"csv" or "json" (default: json if -o ends in .json, else csv)`)
 	flags.StringVar(&opts.out, "o", "", "write results to this file, with a manifest next to it")

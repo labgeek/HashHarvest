@@ -1,6 +1,6 @@
 # HashHarvest
 
-Find every MD5, SHA1, SHA256 and SHA512 hash in a folder of evidence, or hash its files, and triage the results against your watchlists.
+Find MD5, SHA1, SHA256 and SHA512 strings in supported document text, or compute file digests, and triage the results against your watchlists.
 
 **[Download the latest release](https://github.com/labgeek/HashHarvest/releases/latest)** (Windows 10/11; no release is published yet, so for now [build from source](#build-from-source))
 
@@ -11,7 +11,7 @@ Find every MD5, SHA1, SHA256 and SHA512 hash in a folder of evidence, or hash it
 
 - **Two scan modes:** find hashes written inside documents, or compute each file's own digest.
 - **Reads** PDF, TXT, LOG, MD, CSV, JSON (including JSON Lines), XML, DOCX, XLSX and PPTX, including UTF-16 text.
-- **Misses nothing silently:** every file or folder it can't read is listed with the reason, and kept in the scan log.
+- **Reports scan errors:** detected read and parse failures are listed with reasons. Text extraction has [coverage limits](USAGE.md#what-is-read-and-skipped).
 - **Triage:** watchlists highlight known-bad hashes, and VirusTotal lookup is optional.
 - **Provenance:** each result carries its source file's SHA-256, and each export gets a manifest with the tool version, time and the export's own SHA-256.
 - **History:** scans are saved locally and can be reloaded and re-exported.
@@ -42,7 +42,7 @@ The [samples](samples/) folder holds made-up evidence. Scan `samples/evidence` i
 hashharvest-cli.exe -o results.csv C:\cases\evidence
 ```
 
-It exits `0` if everything was scanned and `3` if something was skipped. See [Command line](USAGE.md#command-line) for all flags and exit codes.
+It exits `0` when scanning and output finish without reported skips, and `3` when skips are reported. Neither code certifies complete coverage. See [Command line](USAGE.md#command-line) for all flags and exit codes.
 
 ## Build from source
 

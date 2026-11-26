@@ -143,7 +143,7 @@ Run the executable from a writable folder, since the database is written beside 
 
 ### 1. Select an Input Directory
 
-Click **Select Input Folder** and choose the directory containing the files you want to scan. HashHarvest walks the directory recursively and processes every supported file it finds.
+Click **Select Input Folder** and choose the directory containing the files you want to scan. HashHarvest walks the directory recursively and attempts to process eligible files (see coverage and link restrictions below).
 
 **Supported file types:** PDF, TXT, LOG, MD, CSV, JSON, XML, DOCX, XLSX, PPTX
 
@@ -154,7 +154,7 @@ Click **Select Input Folder** and choose the directory containing the files you 
 Pick one of the two **Scan Mode** radio buttons:
 
 - **Find hashes in text** (default) — scans the *text content* of supported document types for hash-shaped strings. Use this to pull hashes (IOCs) out of reports, logs, and threat-intel files. Only the supported file types listed above are read.
-- **Hash the files** — computes each file's own MD5/SHA1/SHA256/SHA512 digest. This walks **every** file under the folder, not just the supported document types, so you can fingerprint a directory of samples or evidence.
+- **Hash the files** — computes each file's own MD5/SHA1/SHA256/SHA512 digest. This attempts to hash eligible regular files under the folder regardless of extension, subject to access and link restrictions, so you can fingerprint a directory of samples or evidence.
 
 ### 3. Choose Hash Types
 
@@ -305,7 +305,7 @@ Each unique hash is queried and given a verdict:
 
 ## Scan History
 
-Every completed scan is automatically saved to `hashharvest.db`. Click **Scan History** to view and reload past scans.
+The app attempts to save each completed scan to `hashharvest.db`; a database failure is shown in the completion status. Cancelled or failed scans are not saved to history. Click **Scan History** to view and reload past scans.
 
 ### History Dialog
 
@@ -326,7 +326,7 @@ Use the **Show** drop-down to filter by time range:
 | Last 90 days | Rolling 90-day window |
 | All time | Entire database |
 
-Select a row and click **View Log** to read the scan's stored log, which lists every skipped file and why. Click **Load Selected** to restore that scan into the main window. The results table, summary counts, export buttons, and any watchlist highlights are all populated exactly as they would be after a live scan.
+Select a row and click **View Log** to read the scan's stored log, which lists reported skips and their reasons (not unsupported extensions or unsearched document content). Click **Load Selected** to restore that scan into the main window. The results table, summary counts, export buttons, and any watchlist highlights are all populated exactly as they would be after a live scan.
 
 ---
 
@@ -377,7 +377,7 @@ Every export also writes `<export>.manifest.json` next to it. It records the too
 (Get-FileHash .\results.csv -Algorithm SHA256).Hash.ToLower()
 ```
 
-For a scan reloaded from history, `skipped` is `null` because the list was not stored (the scan log still names each file), and `mode` is inferred from the results.
+For a scan reloaded from history, `skipped` is `null` because the list was not stored (the stored scan log retains reported skips, if available), and `mode` is inferred from the results.
 
 ---
 
@@ -391,7 +391,7 @@ hashharvest-cli [flags] <folder>
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `-mode` | `text` | `text` finds hashes in documents; `file` hashes every file. |
+| `-mode` | `text` | `text` finds hashes in documents; `file` hashes eligible regular files regardless of extension. |
 | `-types` | all four | Comma-separated list, such as `MD5,SHA256`. |
 | `-format` | from `-o` | `csv` or `json`. Without it, `json` if `-o` ends in `.json`, else `csv`. |
 | `-o` | standard output | Write results to this file, plus `<file>.manifest.json`. |
@@ -402,7 +402,7 @@ Flags go before the folder. Skipped files are listed on standard error. No manif
 
 | Exit code | Meaning |
 |-----------|---------|
-| `0` | Everything was scanned. |
+| `0` | The scan and output completed without reported skips; this does not certify complete coverage. |
 | `1` | The scan or writing its output failed, or it was cancelled with Ctrl+C. |
 | `2` | The command was wrong, or `-o` names an existing file. |
 | `3` | The scan finished, but something was skipped. |
@@ -426,20 +426,30 @@ Flags go before the folder. Skipped files are listed on standard error. No manif
 | `.xml` | All element text. |
 | `.pdf` | Page text, with the page number in the context. Opens encrypted PDFs whose password is empty; skips ones that need a password. |
 | `.docx` | The document body (not headers, footers or footnotes). |
-| `.xlsx` | Text cells of every sheet (numeric cells never hold hashes). |
+| `.xlsx` | Shared strings and worksheet inline strings; other cell representations are not searched. |
 | `.pptx` | Slide text (not speaker notes or masters), with the slide number in the context. |
 
-Extensions are matched without regard to case. Text mode reads only these; file mode hashes every file. A hash split across formatting runs in an Office file is rejoined. A hash is a run of exactly 32, 40, 64 or 128 hex digits, so a longer run never produces a shorter hash. The first occurrence of each hash in a file is reported.
+Extensions are matched without regard to case. Text mode selects files by these extensions, not by content detection. Unsupported extensions and extensionless files are silently excluded, including from counts and skip lists. A wrong supported extension invokes that extension's reader and may fail or yield no hits. Hidden files are not excluded by a hidden-file filter. File mode hashes eligible regular files regardless of extension, subject to access and link restrictions; it does not extract their contents. Text in supported Office formatting runs within a paragraph/string is concatenated. A hash is a run of exactly 32, 40, 64 or 128 hex digits, so a longer run never produces a shorter hash. The first occurrence of each hash in a file is reported.
 
 UTF-16 without a byte-order mark that is mostly non-Latin text is not detected, and neither is UTF-32.
 
+### Coverage exclusions
+
+A successful scan, zero skips, or zero hits is not proof that all evidence was searched. Archives are not recursively unpacked; Office ZIP containers are read only for selected XML parts. Attachments, nested archives and embedded objects are not recursively searched. PDF extraction reads supported page text, without OCR: image-only/scanned pages can yield no hits without a skip, and unsupported or malformed PDF features can omit text. Password-required PDFs are reported as errors; there is no password-entry workflow or encrypted Office decryption.
+
+DOCX reads `word/document.xml`, excluding separate headers, footers, footnotes, endnotes, comments and metadata. XLSX reads shared strings and worksheet inline strings, not arbitrary cell values, formulas, comments, drawings or metadata. PPTX reads slide paragraph text, excluding separate notes, masters, comments and embedded objects. Omitted parts do not produce individual skip records.
+
+Hashes must be contiguous in extracted text: line/paragraph/page boundaries can break them; layout and formatting extraction can also change adjacency. Binary bytes in a `.txt` are decoded as text, not rejected as binary, so hash-shaped bytes can produce hits. No hit does not establish absence of a hash.
+
+Reported skips cover detected failures, not a complete inventory of exclusions. An unreadable subfolder is reported as one path, without enumerating its inaccessible descendants; failure to read the root fails the scan. CSV/JSON exports contain result rows, not a skip log. A live export manifest contains reported skips; history re-exports have `skipped: null`. CLI reports skips on stderr and does not save GUI history or a persistent scan log; redirect stderr to preserve it. GUI history retains the captured log only when saving succeeds; rotating application logs are best-effort and can be lost or rotated. Cancel stops the scan without saving a history record or producing CLI results/manifest; already emitted CLI diagnostics can remain on stderr.
+
 ### Links
 
-Links to folders (symbolic links and junctions) are never followed. A link to a file is followed only when its target is inside the scan folder. Every link that is not followed is reported as skipped.
+Links to folders (symbolic links and junctions) are never followed. A link to a file is followed only when its target is inside the scan folder. Folder links encountered by the walker are reported as skipped. In text mode, the extension filter runs before file-link target checks: file links with unsupported names are silently excluded, even when broken or pointing outside the root. The scan root itself may resolve through a link.
 
 ### Limits
 
-Memory use is bounded. Anything over a limit is reported, never silently dropped.
+The readers impose the following limits on content they process. These checks do not certify that every document part was inspected; unsearched parts can be omitted without a warning.
 
 | What | Limit | Over the limit |
 |------|-------|----------------|
