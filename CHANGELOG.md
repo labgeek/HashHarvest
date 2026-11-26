@@ -5,6 +5,13 @@ Format: `MM-DD-YYYY HH:MM:SS` timestamps, sections: Added / Changed / Fixed / Re
 
 ---
 
+## [11-26-2026 13:09:04]
+
+### Changed
+- `README.md`: "Build from source" now starts from cloning the repository, shows where each program is written, and writes the command-line tool to `dist\`; the download note says no release is published yet
+- `USAGE.md`: new "Building from Source" section covering requirements, both programs, building without the Wails CLI, running from source, tests and release packaging
+- `USAGE.md`: troubleshooting for a missing `wails` command, a locked `HashHarvest.exe`, and the test cleanup error caused by antivirus
+
 ## [11-26-2026 11:36:03] — v1.0.0
 
 ### Added

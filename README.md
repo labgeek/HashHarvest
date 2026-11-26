@@ -2,7 +2,7 @@
 
 Find every MD5, SHA1, SHA256 and SHA512 hash in a folder of evidence, or hash its files, and triage the results against your watchlists.
 
-**[Download the latest release](https://github.com/labgeek/HashHarvest/releases/latest)** (Windows 10/11; the link works once v1.0.0 is published)
+**[Download the latest release](https://github.com/labgeek/HashHarvest/releases/latest)** (Windows 10/11; no release is published yet, so for now [build from source](#build-from-source))
 
 > **Demo:** _screenshot or short recording to come._
 <!-- TODO: add a demo image or GIF of a scan of samples/evidence. -->
@@ -45,14 +45,24 @@ It exits `0` if everything was scanned and `3` if something was skipped. See [Co
 
 ## Build from source
 
-You need Go 1.26 or newer and the Wails CLI v2.17.1. No C compiler, Node.js or npm is needed.
+On Windows 10 or 11 you need [Git](https://git-scm.com/), [Go](https://go.dev/dl/) 1.26 or newer and the Wails CLI v2.17.1. No C compiler, Node.js or npm is needed. In PowerShell:
 
 ```powershell
+git clone https://github.com/labgeek/HashHarvest.git
+cd HashHarvest
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
-wails build -trimpath                      # packaging\wails\bin\HashHarvest.exe
-go build -trimpath ./cmd/hashharvest-cli   # hashharvest-cli.exe
-go test ./...
+wails build -trimpath
+go build -trimpath -o dist\hashharvest-cli.exe .\cmd\hashharvest-cli
 ```
+
+| Program | Where it is written |
+|---------|---------------------|
+| Desktop app | `packaging\wails\bin\HashHarvest.exe` |
+| Command line | `dist\hashharvest-cli.exe` |
+
+If PowerShell cannot find `wails`, add `%USERPROFILE%\go\bin` to your `PATH`. Close HashHarvest before rebuilding, because Windows locks a running `.exe`. To run the tests, use `go test ./...`.
+
+[USAGE.md](USAGE.md#building-from-source) covers building without the Wails CLI, running from source, all checks and release packaging.
 
 ## Documentation
 
