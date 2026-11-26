@@ -9,13 +9,17 @@
 testFiles/
 onfile/
 
-# Track only these scripts
+# Track only these scripts (*.ps1 must stay above the exceptions)
+*.ps1
 scripts/*
 !scripts/check.ps1
 !scripts/smoke-gui.ps1
 !scripts/package-release.ps1
 
 docs/
+
+# Local scratch input
+inbox/
 
 # Go / Wails build outputs
 coverage.out
@@ -25,5 +29,7 @@ frontend/wailsjs/
 # frontend/dist is the Wails UI source (embedded by main.go), not a build output
 !frontend/dist/
 
-# Release packaging output
-dist/
+# Release packaging output (root only: frontend/dist is source)
+/dist/
+hashharvest.exe
+hashharvest.db

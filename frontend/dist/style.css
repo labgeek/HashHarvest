@@ -11,10 +11,44 @@
   --hit-text: #ffffff;
   --suspicious: rgb(230, 160, 60);
   --clean: rgb(80, 170, 90);
+  --field: #ffffff;
+  --btn-bg: #f8f9fa;
+  --btn-hover: #e9ecef;
+  --btn-border: #b9c0c8;
+  --disabled: #a0a6ad;
+  --row-line: #eef0f3;
+  --th-bg: #eceff3;
+  color-scheme: light; /* also themes checkboxes, scrollbars and dialogs */
   font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
   color: var(--text);
 }
+
+:root[data-theme="dark"] {
+  --bg: #16181d;
+  --panel: #1f2229;
+  --text: #e4e6eb;
+  --muted: #9aa3ad;
+  --border: #363b45;
+  --accent: #6ea0f5;
+  --row-alt: #1d2027;
+  --selected: #2c456e;
+  /* darker than the light theme so white row text stays readable */
+  --hit-bg: rgb(176, 52, 52);
+  --suspicious: rgb(160, 100, 20);
+  --clean: rgb(45, 120, 58);
+  --field: #181b21;
+  --btn-bg: #2a2e37;
+  --btn-hover: #353a45;
+  --btn-border: #4a515e;
+  --disabled: #6b727d;
+  --row-line: #2a2e37;
+  --th-bg: #272b33;
+  color-scheme: dark;
+}
+
+a { color: var(--accent); }
+#theme { margin-top: 4px; }
 
 * { box-sizing: border-box; }
 
@@ -68,7 +102,7 @@ input[type=text], input[type=search], input[type=password], select, textarea {
   padding: 4px 6px;
   border: 1px solid var(--border);
   border-radius: 3px;
-  background: #fff;
+  background: var(--field);
   color: var(--text);
 }
 textarea { width: 100%; resize: vertical; }
@@ -76,14 +110,14 @@ textarea { width: 100%; resize: vertical; }
 button {
   font: inherit;
   padding: 4px 12px;
-  border: 1px solid #b9c0c8;
+  border: 1px solid var(--btn-border);
   border-radius: 3px;
-  background: #f8f9fa;
+  background: var(--btn-bg);
   color: var(--text);
   cursor: pointer;
 }
-button:hover:not(:disabled) { background: #e9ecef; }
-button:disabled { color: #a0a6ad; cursor: default; }
+button:hover:not(:disabled) { background: var(--btn-hover); }
+button:disabled { color: var(--disabled); cursor: default; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .progress-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; }
@@ -92,17 +126,17 @@ progress { flex: 1; height: 16px; }
 .summary { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 4px 0; }
 .summary dd { margin: 0; }
 
-.table-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); background: #fff; }
+.table-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); background: var(--field); }
 table { border-collapse: collapse; width: 100%; table-layout: fixed; }
 th, td {
   text-align: left;
   padding: 3px 6px;
-  border-bottom: 1px solid #eef0f3;
+  border-bottom: 1px solid var(--row-line);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-th { position: sticky; top: 0; background: #eceff3; font-weight: 600; user-select: none; }
+th { position: sticky; top: 0; background: var(--th-bg); font-weight: 600; user-select: none; }
 #results.sortable th { cursor: pointer; }
 th.asc::after { content: " ▲"; font-size: 9px; }
 th.desc::after { content: " ▼"; font-size: 9px; }
@@ -124,8 +158,8 @@ td.num { text-align: right; }
   z-index: 10;
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border: 1px solid #b9c0c8;
+  background: var(--field);
+  border: 1px solid var(--btn-border);
   box-shadow: 0 2px 8px rgba(0, 0, 0, .15);
 }
 .menu[hidden] { display: none; }
@@ -133,13 +167,15 @@ td.num { text-align: right; }
 .menu button:hover { background: var(--selected); }
 
 dialog {
-  border: 1px solid #b9c0c8;
+  border: 1px solid var(--btn-border);
   border-radius: 6px;
   padding: 12px 16px;
   width: min(760px, 92vw);
   max-height: 88vh;
   flex-direction: column;
   gap: 6px;
+  background: var(--panel);
+  color: var(--text);
 }
 dialog[open] { display: flex; }
 dialog::backdrop { background: rgba(0, 0, 0, .25); }
@@ -155,7 +191,7 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
   overflow: auto;
   padding: 6px 8px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--field);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;

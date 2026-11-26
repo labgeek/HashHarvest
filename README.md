@@ -1,8 +1,8 @@
 # HashHarvest
 
-Find every MD5, SHA1, SHA256 and SHA512 hash in a folder of evidence, or hash its files, and triage the results against your watchlists.
+Find MD5, SHA1, SHA256 and SHA512 strings in supported document text, or compute file digests, and triage the results against your watchlists.
 
-**[Download the latest release](https://github.com/labgeek/HashHarvest/releases/latest)** (Windows 10/11; the link works once v1.0.0 is published)
+**[Download the latest release](https://github.com/labgeek/HashHarvest/releases/latest)** (Windows 10/11; no release is published yet, so for now [build from source](#build-from-source))
 
 > **Demo:** _screenshot or short recording to come._
 <!-- TODO: add a demo image or GIF of a scan of samples/evidence. -->
@@ -11,10 +11,11 @@ Find every MD5, SHA1, SHA256 and SHA512 hash in a folder of evidence, or hash it
 
 - **Two scan modes:** find hashes written inside documents, or compute each file's own digest.
 - **Reads** PDF, TXT, LOG, MD, CSV, JSON (including JSON Lines), XML, DOCX, XLSX and PPTX, including UTF-16 text.
-- **Misses nothing silently:** every file or folder it can't read is listed with the reason, and kept in the scan log.
+- **Reports scan errors:** detected read and parse failures are listed with reasons. Text extraction has [coverage limits](USAGE.md#what-is-read-and-skipped).
 - **Triage:** watchlists highlight known-bad hashes, and VirusTotal lookup is optional.
 - **Provenance:** each result carries its source file's SHA-256, and each export gets a manifest with the tool version, time and the export's own SHA-256.
 - **History:** scans are saved locally and can be reloaded and re-exported.
+- **Light and dark themes (v1.0.1):** follow your Windows theme or choose a remembered preference with the header toggle. See [Appearance](USAGE.md#appearance).
 - **Command line:** `hashharvest-cli` runs the same scan for scripts.
 
 ## Install
@@ -41,18 +42,28 @@ The [samples](samples/) folder holds made-up evidence. Scan `samples/evidence` i
 hashharvest-cli.exe -o results.csv C:\cases\evidence
 ```
 
-It exits `0` if everything was scanned and `3` if something was skipped. See [Command line](USAGE.md#command-line) for all flags and exit codes.
+It exits `0` when scanning and output finish without reported skips, and `3` when skips are reported. Neither code certifies complete coverage. See [Command line](USAGE.md#command-line) for all flags and exit codes.
 
 ## Build from source
 
-You need Go 1.26 or newer and the Wails CLI v2.17.1. No C compiler, Node.js or npm is needed.
+On Windows 10 or 11 you need [Git](https://git-scm.com/), [Go](https://go.dev/dl/) 1.26 or newer and the Wails CLI v2.17.1. No C compiler, Node.js or npm is needed. In PowerShell:
 
 ```powershell
+git clone https://github.com/labgeek/HashHarvest.git
+cd HashHarvest
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
-wails build -trimpath                      # packaging\wails\bin\HashHarvest.exe
-go build -trimpath ./cmd/hashharvest-cli   # hashharvest-cli.exe
-go test ./...
+wails build -trimpath
+go build -trimpath -o dist\hashharvest-cli.exe .\cmd\hashharvest-cli
 ```
+
+| Program | Where it is written |
+|---------|---------------------|
+| Desktop app | `packaging\wails\bin\HashHarvest.exe` |
+| Command line | `dist\hashharvest-cli.exe` |
+
+If PowerShell cannot find `wails`, add `%USERPROFILE%\go\bin` to your `PATH`. Close HashHarvest before rebuilding, because Windows locks a running `.exe`. To run the tests, use `go test ./...`.
+
+[USAGE.md](USAGE.md#building-from-source) covers building without the Wails CLI, running from source, all checks and release packaging.
 
 ## Documentation
 

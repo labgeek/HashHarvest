@@ -4,6 +4,12 @@ package readers
 // pypdf opens without a password: documents whose user password is empty
 // (or whose owner password is empty), encrypted with RC4 (revisions 2-4),
 // AES-128 (revision 4) or AES-256 (revisions 5 and 6).
+// RC4 and MD5 are required for legacy PDF compatibility (ISO 32000-1,
+// sections 7.6.2-7.6.3, Algorithms 1-7). They only decrypt input and check
+// existing password entries, including RC4 encryption during validation.
+// No password is supplied by the caller: an empty owner password can recover
+// the file's padded user password. No new encrypted PDF or password hash is
+// stored by this handler. See SECURITY.md for the security rationale.
 
 import (
 	"bytes"
