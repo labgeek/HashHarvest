@@ -1,0 +1,6 @@
+SYNTHETIC SAMPLE DATA - not from a real incident.
+
+Analyst notes, case HH-SAMPLE-001.
+Dropper MD5: c6505fe29a9864303a2b9ac16fcecb9d
+Same file, SHA1: 9bc87125beb723f26a4f5265df75f8e8ea35de06
+Upper-case copy: C6505FE29A9864303A2B9AC16FCECB9D

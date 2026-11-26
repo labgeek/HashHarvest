@@ -1,0 +1,3 @@
+alert_id,host,verdict,sha256,note
+1,WS-SAMPLE-07,quarantined,95d1f7f5cbdd98d9a586db1bd182c614d78521d9e5ec8b8ae5a0de49958e2bea,"SYNTHETIC, loader"
+2,WS-SAMPLE-09,allowed,0a90170c0e2f8ac6ecfda676c374e8cddf3dc192da2389f3fedb8aa6a2198f7b,SYNTHETIC known good

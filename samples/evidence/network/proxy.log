@@ -1,0 +1,3 @@
+2026-01-15T09:12:01Z SYNTHETIC host=WS-SAMPLE-07 action=download sha256=f8525390bb78cc22440b998c9eee2c3c53577eb4bc57c0208e849b3434175e0a
+2026-01-15T09:12:44Z SYNTHETIC host=WS-SAMPLE-07 action=beacon sha1=df9b644620e4c33daf331f36a7ed687bec5c8947
+2026-01-15T09:13:02Z SYNTHETIC session id deadbeefdeadbeefdeadbeef is too short to be a hash

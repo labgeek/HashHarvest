@@ -6,3 +6,5 @@
 *.go text eol=lf
 # Go fuzz corpus files are byte-exact test inputs
 internal/**/testdata/fuzz/** -text
+# Sample evidence is byte-exact: its hashes and encodings are part of the test
+samples/** -text

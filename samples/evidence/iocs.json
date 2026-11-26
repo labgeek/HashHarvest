@@ -1,0 +1,13 @@
+{
+  "note": "SYNTHETIC",
+  "indicators": [
+    {
+      "type": "md5",
+      "value": "df2a858b19133a1358fe0ec0f3a365a7"
+    },
+    {
+      "type": "sha256",
+      "value": "f8525390bb78cc22440b998c9eee2c3c53577eb4bc57c0208e849b3434175e0a"
+    }
+  ]
+}
