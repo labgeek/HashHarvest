@@ -176,12 +176,59 @@ func TestHashFilesWalksAllFileTypes(t *testing.T) {
 	}
 }
 
-func TestMissingDirectoryIsAnEmptyScan(t *testing.T) {
+type scanFunc func(context.Context, string, []string, Callbacks) (Results, []FileError, error)
+
+var scanModes = map[string]scanFunc{"text": Extract, "file": HashFiles}
+
+var errDenied = errors.New("access is denied")
+
+// denyReadDir makes listing path fail, as it does for a folder the user
+// has no permission to read.
+func denyReadDir(t *testing.T, path string) {
+	t.Helper()
+	orig := readDir
+	readDir = func(dir string) ([]os.DirEntry, error) {
+		if dir == path {
+			return nil, errDenied
+		}
+		return orig(dir)
+	}
+	t.Cleanup(func() { readDir = orig })
+}
+
+func TestUnreadableScanFolderFailsTheScan(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nope")
-	for _, run := range []func(context.Context, string, []string, Callbacks) (Results, []FileError, error){Extract, HashFiles} {
-		results, fileErrors, err := run(bg, missing, nil, Callbacks{})
-		if err != nil || len(results) != 0 || len(fileErrors) != 0 {
-			t.Errorf("results %v, errors %v, err %v", results, fileErrors, err)
+	denied := t.TempDir()
+	write(t, denied, "a.txt", md5Hash)
+	denyReadDir(t, denied)
+	for name, run := range scanModes {
+		for _, dir := range []string{missing, denied} {
+			results, fileErrors, err := run(bg, dir, nil, Callbacks{})
+			if err == nil || !strings.HasPrefix(err.Error(), "cannot read directory: ") {
+				t.Errorf("%s mode, %s: err = %v (results %v, errors %v); want the scan to fail", name, dir, err, results, fileErrors)
+			}
+		}
+	}
+}
+
+func TestUnreadableSubfolderIsReportedAsSkipped(t *testing.T) {
+	dir := t.TempDir()
+	ok := write(t, dir, "ok.txt", md5Hash)
+	write(t, dir, "locked/a.txt", md5Hash)
+	locked := filepath.Join(dir, "locked")
+	denyReadDir(t, locked)
+	for name, run := range scanModes {
+		var status []string
+		results, fileErrors, err := run(bg, dir, nil, Callbacks{Status: func(m string) { status = append(status, m) }})
+		if err != nil {
+			t.Fatalf("%s mode: %v", name, err)
+		}
+		want := []FileError{{locked, "cannot read directory: " + errDenied.Error()}}
+		if !reflect.DeepEqual(fileErrors, want) || len(results) != 1 || results[ok] == nil {
+			t.Errorf("%s mode: results %v, errors %+v; want %+v", name, results, fileErrors, want)
+		}
+		if want := []string{"Skipped " + locked + ": cannot read directory: " + errDenied.Error()}; !reflect.DeepEqual(status, want) {
+			t.Errorf("%s mode: status = %q, want %q", name, status, want)
 		}
 	}
 }

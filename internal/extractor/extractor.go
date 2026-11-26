@@ -107,16 +107,25 @@ func joinPath(dir, name string) string {
 	return dir + string(os.PathSeparator) + name
 }
 
-// walkFiles lists every non-directory entry below dir, sorted. Unreadable
-// directories are skipped and links to directories are not followed, as
-// with os.walk.
-func walkFiles(dir string, keep func(name string) bool) []string {
+// readDir lists a directory; tests replace it to simulate unreadable ones.
+var readDir = os.ReadDir
+
+// walkFiles lists every non-directory entry below root, sorted. Links to
+// directories are not followed. A subdirectory that cannot be listed is
+// returned as a FileError, so its contents are reported as missed rather
+// than silently absent; a root that cannot be listed is an error.
+func walkFiles(root string, keep func(name string) bool) ([]string, []FileError, error) {
 	var paths []string
-	var walk func(string)
-	walk = func(dir string) {
-		entries, err := os.ReadDir(dir)
+	var dirErrors []FileError
+	var walk func(string) error
+	walk = func(dir string) error {
+		entries, err := readDir(dir)
 		if err != nil {
-			return
+			if dir == root {
+				return fmt.Errorf("cannot read directory: %w", err)
+			}
+			dirErrors = append(dirErrors, FileError{dir, "cannot read directory: " + err.Error()})
+			return nil
 		}
 		for _, entry := range entries {
 			path := joinPath(dir, entry.Name())
@@ -133,18 +142,44 @@ func walkFiles(dir string, keep func(name string) bool) []string {
 				paths = append(paths, path)
 			}
 		}
+		return nil
 	}
-	walk(dir)
+	if err := walk(root); err != nil {
+		return nil, nil, err
+	}
 	sort.Strings(paths)
-	return paths
+	return paths, dirErrors, nil
+}
+
+// skipped records a file or directory the scan could not read.
+func skipped(fileErrors []FileError, cb Callbacks, path string, err string) []FileError {
+	if cb.Status != nil {
+		cb.Status(fmt.Sprintf("Skipped %s: %s", path, err))
+	}
+	return append(fileErrors, FileError{path, err})
+}
+
+// listFiles lists the files to scan and reports unreadable subdirectories.
+func listFiles(dir string, keep func(name string) bool, cb Callbacks) ([]string, []FileError, error) {
+	paths, dirErrors, err := walkFiles(dir, keep)
+	if err != nil {
+		return nil, nil, err
+	}
+	var fileErrors []FileError
+	for _, e := range dirErrors {
+		fileErrors = skipped(fileErrors, cb, e.Path, e.Message)
+	}
+	return paths, fileErrors, nil
 }
 
 // HashFiles digests every file under dir with the selected algorithms.
 // Each hit has Line 0 and Context "file digest".
 func HashFiles(ctx context.Context, dir string, types []string, cb Callbacks) (Results, []FileError, error) {
-	paths := walkFiles(dir, nil)
+	paths, fileErrors, err := listFiles(dir, nil, cb)
+	if err != nil {
+		return nil, nil, err
+	}
 	results := Results{}
-	var fileErrors []FileError
 
 	for i, path := range paths {
 		if err := ctx.Err(); err != nil {
@@ -152,10 +187,7 @@ func HashFiles(ctx context.Context, dir string, types []string, cb Callbacks) (R
 		}
 		hits, err := digestFile(path, types)
 		if err != nil {
-			fileErrors = append(fileErrors, FileError{path, err.Error()})
-			if cb.Status != nil {
-				cb.Status(fmt.Sprintf("Skipped %s: %s", path, err))
-			}
+			fileErrors = skipped(fileErrors, cb, path, err.Error())
 		} else {
 			results[path] = hits
 			if cb.Result != nil {
@@ -206,11 +238,13 @@ func digestFile(path string, types []string) ([]Hit, error) {
 // Extract scans the supported document types under dir for hash-shaped
 // strings. Only the first occurrence of each (type, value) per file is kept.
 func Extract(ctx context.Context, dir string, types []string, cb Callbacks) (Results, []FileError, error) {
-	paths := walkFiles(dir, func(name string) bool {
+	paths, fileErrors, err := listFiles(dir, func(name string) bool {
 		return readers.Supported(strings.ToLower(readers.SplitExt(name)))
-	})
+	}, cb)
+	if err != nil {
+		return nil, nil, err
+	}
 	results := Results{}
-	var fileErrors []FileError
 
 	for i, path := range paths {
 		if err := ctx.Err(); err != nil {
@@ -218,10 +252,7 @@ func Extract(ctx context.Context, dir string, types []string, cb Callbacks) (Res
 		}
 		hits, err := extractFile(path, types)
 		if err != nil {
-			fileErrors = append(fileErrors, FileError{path, err.Error()})
-			if cb.Status != nil {
-				cb.Status(fmt.Sprintf("Skipped %s: %s", path, err))
-			}
+			fileErrors = skipped(fileErrors, cb, path, err.Error())
 		} else {
 			results[path] = hits
 			if cb.Result != nil {
