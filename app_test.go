@@ -1,12 +1,16 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -186,7 +190,7 @@ func TestScanSavesHistoryHighlightsWatchlistAndExports(t *testing.T) {
 	if status := a.ExportCSV(); status != "Exported CSV: "+out {
 		t.Errorf("status = %q", status)
 	}
-	if f.lastMessage() != "info|Export Complete|CSV saved to:\n"+out {
+	if f.lastMessage() != "info|Export Complete|CSV saved to:\n"+out+"\n\nManifest:\n"+out+".manifest.json" {
 		t.Errorf("message = %q", f.lastMessage())
 	}
 	got, _ := os.ReadFile(out)
@@ -528,5 +532,88 @@ func TestCancelScan(t *testing.T) {
 	a.CancelScan()
 	if start := scanAndWait(t, a, dir, "text", []string{"MD5"}); !start.OK || len(f.payloads["scan:finished"]) != 1 {
 		t.Errorf("start %+v, events %v", start, f.events)
+	}
+}
+
+// manifest is the sidecar written next to every export.
+type manifest struct {
+	Tool       string `json:"tool"`
+	Version    string `json:"version"`
+	ExportedAt string `json:"exported_at"`
+	Export     struct {
+		File   string `json:"file"`
+		Format string `json:"format"`
+		SHA256 string `json:"sha256"`
+		Rows   int    `json:"rows"`
+	} `json:"export"`
+	Scan struct {
+		Folder       string         `json:"folder"`
+		ScannedAt    string         `json:"scanned_at"`
+		Mode         string         `json:"mode"`
+		HashTypes    []string       `json:"hash_types"`
+		FilesScanned int            `json:"files_scanned"`
+		HashesFound  int            `json:"hashes_found"`
+		SkippedFiles int            `json:"skipped_files"`
+		Skipped      *[]SkippedFile `json:"skipped"`
+	} `json:"scan"`
+}
+
+func readManifest(t *testing.T, export string) manifest {
+	t.Helper()
+	data, err := os.ReadFile(export + ".manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("%v in %s", err, data)
+	}
+	return m
+}
+
+func TestExportsWriteAManifest(t *testing.T) {
+	a, f := newApp(t)
+	dir := t.TempDir()
+	write(t, dir, "a.txt", "md5 "+md5Hash+"\nsha1 "+sha1Hash)
+	write(t, dir, "bad.json", "{")
+	scanAndWait(t, a, dir, "text", []string{"SHA1", "MD5"})
+
+	out := filepath.Join(t.TempDir(), "out.json")
+	f.pick = out
+	if status := a.ExportJSON(); status != "Exported JSON: "+out {
+		t.Fatalf("status = %q", status)
+	}
+	m := readManifest(t, out)
+	zoned := regexp.MustCompile(`[+-]\d\d:\d\d$`)
+	if m.Tool != "HashHarvest" || m.Version != version || !zoned.MatchString(m.ExportedAt) {
+		t.Errorf("tool fields: %+v", m)
+	}
+	data, _ := os.ReadFile(out)
+	sum := sha256.Sum256(data)
+	if m.Export.File != "out.json" || m.Export.Format != "JSON" || m.Export.SHA256 != hex.EncodeToString(sum[:]) || m.Export.Rows != 2 {
+		t.Errorf("export: %+v", m.Export)
+	}
+	s := m.Scan
+	if s.Folder != dir || !zoned.MatchString(s.ScannedAt) || s.Mode != "text" || !reflect.DeepEqual(s.HashTypes, []string{"MD5", "SHA1"}) ||
+		s.FilesScanned != 2 || s.HashesFound != 2 || s.SkippedFiles != 1 ||
+		s.Skipped == nil || !reflect.DeepEqual(*s.Skipped, []SkippedFile{{filepath.Join(dir, "bad.json"), "invalid JSON"}}) {
+		t.Errorf("scan: %+v", s)
+	}
+	if !strings.Contains(f.lastMessage(), out+".manifest.json") {
+		t.Errorf("message = %q", f.lastMessage())
+	}
+
+	// A scan loaded from history: the skip list was not stored, so it is
+	// null (unknown), unlike an empty list; the mode comes from the rows.
+	scans, _ := a.db.GetScans("")
+	if _, err := a.LoadScan(scans[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	out = filepath.Join(t.TempDir(), "again.csv")
+	f.pick = out
+	a.ExportCSV()
+	m = readManifest(t, out)
+	if m.Export.Format != "CSV" || m.Scan.Folder != dir || m.Scan.Mode != "text" || m.Scan.SkippedFiles != 1 || m.Scan.Skipped != nil {
+		t.Errorf("history manifest: %+v", m)
 	}
 }
