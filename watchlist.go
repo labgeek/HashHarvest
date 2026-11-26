@@ -14,8 +14,8 @@ import (
 )
 
 // watchlistHits returns the scan's hash values that are on a watchlist and
-// the status line with the hit count appended. A failed lookup is ignored,
-// as in the Python app.
+// the status line with the hit count appended. A failed lookup is ignored:
+// the scan itself succeeded.
 func (a *App) watchlistHits(d *db.DB, scanID int64, results extractor.Results, status string) ([]string, string) {
 	matches, err := d.GetScanMatches(scanID)
 	if err != nil || len(matches) == 0 {

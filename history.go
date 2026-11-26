@@ -28,8 +28,8 @@ func (a *App) TimeRanges() []string {
 }
 
 // since returns the ISO lower bound for a time-range index ("" = all time).
-// Like Python's naive datetime arithmetic, "N days ago" keeps the wall-clock
-// time across daylight-saving changes.
+// "N days ago" keeps the wall-clock time across daylight-saving changes, as
+// stored timestamps are compared by their local date and time.
 func since(index int, now time.Time) string {
 	if index < 0 || index >= len(timeRanges) || timeRanges[index].Days < 0 {
 		return ""

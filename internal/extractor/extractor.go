@@ -22,7 +22,7 @@ import (
 )
 
 // Hit is one extracted hash. Line is 0 when there is no line number
-// (file-digest mode), which Python represents as None.
+// (file-digest mode).
 type Hit struct {
 	HashType  string
 	HashValue string
@@ -111,8 +111,8 @@ func requireRegularFile(path string) error {
 	return nil
 }
 
-// joinPath concatenates like Python's os.path.join, without cleaning, so
-// stored paths match what the Python implementation recorded.
+// joinPath concatenates without cleaning, so stored paths keep the form the
+// user typed and match those in existing scan histories.
 func joinPath(dir, name string) string {
 	if dir == "" {
 		return name
@@ -339,8 +339,8 @@ func Extract(ctx context.Context, dir string, types []string, cb Callbacks) (Res
 // extractFile returns the hashes in one file. note, when not empty, says
 // the file was read differently than its type suggests.
 func extractFile(ctx context.Context, path string, types []string) (hits []Hit, note string, err error) {
-	// Scanned files are untrusted. A parser bug must skip that one file, as
-	// Python's per-file "except Exception" did, not take down the scan.
+	// Scanned files are untrusted. A parser bug must skip that one file, not
+	// take down the scan.
 	defer func() {
 		if r := recover(); r != nil {
 			hits, note, err = nil, "", fmt.Errorf("internal error reading file: %v", r)

@@ -27,10 +27,6 @@ var (
 
 // Setup enables file and console logging. It is safe to call more than
 // once. A read-only home directory leaves console-only logging.
-//
-// The Python app also read HASHHARVEST_LOG_LEVEL, but its only log calls
-// happen during a scan, where capture forces INFO, so the variable never
-// changed the output; it is not consulted here.
 func Setup() {
 	mu.Lock()
 	defer mu.Unlock()

@@ -115,7 +115,7 @@ type Watchlist struct {
 }
 
 // DB is a handle on one database file. No connection is held between
-// calls: like the Python implementation, each operation opens the file,
+// calls: each operation opens the file,
 // runs in one transaction, and closes it, so the file is never left locked.
 type DB struct{ path string }
 

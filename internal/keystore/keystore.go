@@ -17,7 +17,9 @@ import (
 )
 
 const (
-	service = "HashHarvest" // also the QSettings organization and application
+	// service is also the registry organization and application that keys
+	// saved by earlier releases are stored under.
+	service = "HashHarvest"
 	keyName = "vt_api_key"
 )
 
