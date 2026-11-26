@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -272,5 +273,35 @@ func TestISO(t *testing.T) {
 	}
 	if got := ISO(at.Truncate(time.Second)); got != "2026-11-14T10:04:11" {
 		t.Errorf("zero microseconds must be omitted: %q", got)
+	}
+}
+
+// Stored timestamps carry their UTC offset, so a scan's time is
+// unambiguous when the database moves to another machine or time zone.
+func TestNowISOIncludesTheOffset(t *testing.T) {
+	zoned := regexp.MustCompile(`^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?[+-]\d\d:\d\d$`)
+	if got := NowISO(); !zoned.MatchString(got) {
+		t.Errorf("NowISO() = %q", got)
+	}
+	at := time.Date(2026, 11, 14, 10, 4, 11, 123456000, time.FixedZone("", -5*3600))
+	if got := ISOWithOffset(at); got != "2026-11-14T10:04:11.123456-05:00" {
+		t.Errorf("got %q", got)
+	}
+	if got := ISOWithOffset(at.UTC()); got != "2026-11-14T15:04:11.123456+00:00" {
+		t.Errorf("UTC: %q", got)
+	}
+}
+
+// History filtering compares the local date and time, so scans saved
+// before timestamps had an offset and scans saved after it sort and filter
+// together.
+func TestGetScansMixesOldAndZonedTimestamps(t *testing.T) {
+	d := open(t, filepath.Join(t.TempDir(), "scans.db"))
+	for _, at := range []string{"2026-10-01T08:00:00", "2026-10-02T08:00:00-05:00", "2026-10-03T08:00:00.5"} {
+		must(d.SaveScan("C:/ev", at, "MD5", 0, 0, 0, extractor.Results{}, ""))(t)
+	}
+	scans, err := d.GetScans("2026-10-02T00:00:00")
+	if err != nil || len(scans) != 2 || scans[0].ScannedAt != "2026-10-03T08:00:00.5" || scans[1].ScannedAt != "2026-10-02T08:00:00-05:00" {
+		t.Errorf("scans = %+v, %v", scans, err)
 	}
 }

@@ -114,11 +114,18 @@ func Open(path string) (*DB, error) {
 	return d, d.initSchema()
 }
 
-// NowISO formats the current local time like Python's
-// datetime.now().isoformat(), the format of every stored timestamp.
-func NowISO() string { return ISO(time.Now()) }
+// NowISO formats the current local time with its UTC offset, the format of
+// every timestamp stored from now on. Rows written before carry none.
+func NowISO() string { return ISOWithOffset(time.Now()) }
 
-// ISO formats t like datetime.isoformat(): microseconds are omitted when zero.
+// ISOWithOffset is ISO followed by t's UTC offset, as in
+// 2026-11-14T10:04:11.123456-05:00.
+func ISOWithOffset(t time.Time) string { return ISO(t) + t.Format("-07:00") }
+
+// ISO formats t's date and time without an offset, like Python's
+// datetime.isoformat(): microseconds are omitted when zero. History filters
+// compare stored timestamps against it as text, which works for rows with
+// and without an offset.
 func ISO(t time.Time) string {
 	s := t.Format("2006-01-02T15:04:05")
 	if micro := t.Nanosecond() / 1000; micro != 0 {
