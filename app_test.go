@@ -474,3 +474,21 @@ func TestInfo(t *testing.T) {
 		t.Errorf("info = %+v", info)
 	}
 }
+
+// The window loads only its own scripts and styles, and a file dragged onto
+// it is not opened inside the app, where a page could reach the bindings.
+func TestWindowHardening(t *testing.T) {
+	opts := appOptions(NewApp(t.TempDir()))
+	if opts.DragAndDrop == nil || !opts.DragAndDrop.DisableWebViewDrop {
+		t.Error("dropping files onto the WebView must be disabled")
+	}
+	page, err := assets.ReadFile("frontend/dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; ` +
+		`style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">`
+	if !strings.Contains(string(page), csp) {
+		t.Error("index.html must declare the Content-Security-Policy")
+	}
+}
