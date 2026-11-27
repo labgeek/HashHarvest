@@ -4,8 +4,8 @@ Find MD5, SHA1, SHA256 and SHA512 strings in supported document text, or compute
 
 **[Download the latest release](https://github.com/labgeek/HashHarvest/releases/latest)** (Windows 10/11)
 
-> **Demo:** _screenshot or short recording to come._
-<!-- TODO: add a demo image or GIF of a scan of samples/evidence. -->
+<img width="1182" height="714" alt="image" src="https://github.com/user-attachments/assets/a05d4a96-797a-4eed-963a-113d44a79d21" />
+
 
 ## What it does
 
